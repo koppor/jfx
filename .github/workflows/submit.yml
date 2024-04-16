@@ -45,6 +45,7 @@ on:
       - main
       - 'jfx[0-9]+'
       - 'WIP*'
+  pull_request:
   # Enable triggering the workflow manually
   workflow_dispatch:
 
