@@ -37,16 +37,7 @@
 name: JavaFX pre-submit tests
 
 on:
-  # Run GitHub actions on every push to all branches except the main production branches, also
-  # exclude any branch starting with "WIP".
-  push:
-    branches-ignore:
-      - master
-      - main
-      - 'jfx[0-9]+'
-      - 'WIP*'
   pull_request:
-  # Enable triggering the workflow manually
   workflow_dispatch:
 
 permissions:
