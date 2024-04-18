@@ -451,7 +451,7 @@ defineProperty("JFX_DEPS_URL", "")
 defineProperty("JDK_DOCS_LINK", "")
 
 // COMPILE_WEBKIT specifies whether to build all of webkit.
-defineProperty("COMPILE_WEBKIT", "true")
+defineProperty("COMPILE_WEBKIT", "false")
 ext.IS_COMPILE_WEBKIT = Boolean.parseBoolean(COMPILE_WEBKIT)
 
 // COMPILE_MEDIA specifies whether to build all of media.
