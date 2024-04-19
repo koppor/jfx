@@ -98,17 +98,18 @@ class WinTextRangeProvider {
         }
 
         int length = text.length();
-        start = getValidStringIndex(start, 0, length);
+        start = Math.max(0, Math.min(start, length));
         end = Math.max(start, Math.min(end, length));
     }
 
     private int getValidStringIndex(int start, int requestedSteps, int maxEnd) {
         int fixedMaxEnd = Math.max(0, maxEnd);
+        int fixedStart = Math.max(0, Math.min(start, fixedMaxEnd));
         if (requestedSteps < 0) {
             return fixedMaxEnd;
         }
         try {
-            return Math.min(fixedMaxEnd, Math.addExact(Math.max(0, start), requestedSteps));
+            return Math.min(fixedMaxEnd, Math.addExact(fixedStart, requestedSteps));
         } catch (ArithmeticException e) {
             return fixedMaxEnd;
         }
