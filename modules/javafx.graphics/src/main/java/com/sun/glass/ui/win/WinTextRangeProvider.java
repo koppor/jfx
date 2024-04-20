@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014, 2022, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2014, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -37,7 +37,7 @@ import javafx.scene.text.FontWeight;
  * This class is the Java peer for GlassTextRangeProvider.
  * GlassTextRangeProvider implements ITextRangeProvider.
  */
-public final class WinTextRangeProvider {
+final class WinTextRangeProvider {
 
     private native static void _initIDs();
     static {
@@ -102,7 +102,7 @@ public final class WinTextRangeProvider {
         end = Math.max(start, Math.min(end, length));
     }
 
-    public static int getValidStringIndex(int start, int requestedSteps, int maxEnd) {
+    static int getValidStringIndex(int start, int requestedSteps, int maxEnd) {
         int fixedMaxEnd = Math.max(0, maxEnd);
         int fixedStart = Math.max(0, Math.min(start, fixedMaxEnd));
         if (requestedSteps < 0) {
@@ -371,7 +371,7 @@ public final class WinTextRangeProvider {
         return accessible.getNativeAccessible();
     }
 
-    String GetText(int maxLength) {
+    private String GetText(int maxLength) {
         String text = (String)getAttribute(TEXT);
         if (text == null) return null;
         validateRange(text);
