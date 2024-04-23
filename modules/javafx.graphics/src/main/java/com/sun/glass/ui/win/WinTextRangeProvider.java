@@ -37,7 +37,7 @@ import javafx.scene.text.FontWeight;
  * This class is the Java peer for GlassTextRangeProvider.
  * GlassTextRangeProvider implements ITextRangeProvider.
  */
-final class WinTextRangeProvider {
+class WinTextRangeProvider {
 
     private native static void _initIDs();
     static {
@@ -103,19 +103,23 @@ final class WinTextRangeProvider {
     }
 
     /**
-     * Calculate the end index based on the start index, requested length and the maximum end index.
-     *
-     * @implNote Code does not work if values near Integer.MAX_VALUE are used. For isntance, if 2147483645 is passed as start, 5 as length, and 2147483647 as maxEndIndex, the result will negative.
+     * In the context of substrings, this method calculates the end index based on the start index,
+     * requested string length, and the maximum end index.
      *
      * @param startIndex The start index in a string. Needs to be 0 or more (not checked in the code).
-     * @param length The requested length of a string when starting from "start". Negative numbers are treated as full length.
-     * @param maxEndIndex The maximum end index to return. Needs to be equal or greater than startIndex (not checked in the code).
+     * @param length The requested length of a string when starting from "start".
+     *               Negative numbers are treated as full length.
+     * @param maxEndIndex The maximum end index to return. Needs to be equal or greater than startIndex
+     *                    (not checked in the code).
      */
     static int getEndIndex(int startIndex, int length, int maxEndIndex) {
         if (length < 0 || length > maxEndIndex) {
             return maxEndIndex;
         }
-        return Math.min(startIndex + length, maxEndIndex);
+        int res = Math.min(startIndex + length, maxEndIndex);
+        // In case there was an overflow, return the maximum end index
+        if (res < 0) return maxEndIndex;
+        return res;
     }
 
     void setRange(int start, int end) {
@@ -374,6 +378,12 @@ final class WinTextRangeProvider {
         return accessible.getNativeAccessible();
     }
 
+    /**
+     *
+     * Returns the text contained in the TEXT attribute, starting from the start index and ending at the end index.
+     *
+     * @param maxLength The maximum length of the returned string
+     */
     private String GetText(int maxLength) {
         String text = (String)getAttribute(TEXT);
         if (text == null) return null;
