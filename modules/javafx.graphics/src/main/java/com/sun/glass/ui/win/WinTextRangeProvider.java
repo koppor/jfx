@@ -115,12 +115,16 @@ class WinTextRangeProvider {
      *                    (not checked in the code).
      */
     static int getEndIndex(int startIndex, int length, int maxEndIndex) {
+        System.out.println("getEndIndex: startIndex=" + startIndex + ", length=" + length + ", maxEndIndex=" + maxEndIndex);
         if (length < 0 || length > maxEndIndex) {
+            System.out.println("getEndIndex: returning maxEndIndex");
             return maxEndIndex;
         }
         int res = Math.min(startIndex + length, maxEndIndex);
         // In case there was an overflow, return the maximum end index
+        System.out.println("getEndIndex: maybe returning " + res);
         if (res < 0) return maxEndIndex;
+        System.out.println("getEndIndex: really returning " + res);
         return res;
     }
 
