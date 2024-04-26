@@ -362,7 +362,9 @@ class WinTextRangeProvider {
         String text = (String)getAttribute(TEXT);
         if (text == null) return null;
         validateRange(text);
+        System.out.println("start: " + start + " end: " + end + " maxLength: " + maxLength);
         int endOffset = maxLength != -1 ? Math.min(end, start + maxLength) : end;
+        System.out.println("endOffset: " + endOffset);
 //        System.out.println("+GetText [" + text.substring(start, endOffset)+"]");
         return text.substring(start, endOffset);
     }
