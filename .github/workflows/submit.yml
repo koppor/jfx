@@ -37,15 +37,7 @@
 name: JavaFX pre-submit tests
 
 on:
-  # Run GitHub actions on every push to all branches except the main production branches, also
-  # exclude any branch starting with "WIP".
-  push:
-    branches-ignore:
-      - master
-      - main
-      - 'jfx[0-9]+'
-      - 'WIP*'
-  # Enable triggering the workflow manually
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -140,7 +132,11 @@ jobs:
           set -x
           export PATH="$JAVA_HOME/bin:$ANT_HOME/bin:$PATH"
           bash gradlew --info --continue -PTEST_ONLY=true test -x :web:test
-
+      - name: 'Upload Artifacts'
+        uses: actions/upload-artifact@v3
+        with:
+          name: linux_x64_build
+          path: jfx/build/
 
   macos_x64_build:
     name: macOS x64
@@ -227,6 +223,11 @@ jobs:
           export PATH="$JAVA_HOME/bin:$PATH"
           bash gradlew --info --continue -PTEST_ONLY=true test -x :web:test
 
+      - name: 'Upload Artifacts'
+        uses: actions/upload-artifact@v3
+        with:
+          name: macos_x64_build
+          path: jfx/build/
 
   windows_x64_build:
     name: Windows x64
@@ -338,3 +339,8 @@ jobs:
           $env:Path = "$env:THE_PATH" ;
           echo "Path=$env:Path"
           .\gradlew.bat --info --continue -PTEST_ONLY=true test -x :web:test
+      - name: 'Upload Artifacts'
+        uses: actions/upload-artifact@v3
+        with:
+          name: windows_x64_build
+          path: jfx/build/
