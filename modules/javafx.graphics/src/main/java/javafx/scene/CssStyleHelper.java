@@ -1326,7 +1326,10 @@ final class CssStyleHelper {
             final Styleable styleable,
             final String property) {
 
-        Styleable parent = ((Node)styleable).styleHelper.firstStyleableAncestor.get();
+        // JDK-8268657: walk the live styleable parent chain rather than the cached
+        // firstStyleableAncestor weak reference, which can be transiently empty/stale
+        // during a stylesheet swap and would otherwise drop the inherited value.
+        Styleable parent = findFirstStyleableAncestor(styleable);
         CssStyleHelper parentStyleHelper = getStyleHelper((Node) parent);
 
         if (parent != null && parentStyleHelper != null) {
@@ -1371,7 +1374,15 @@ final class CssStyleHelper {
             } else {
                 // TODO: This block was copied from inherit. Both should use same code somehow.
 
-                Styleable styleableParent = ((Node)styleable).styleHelper.firstStyleableAncestor.get();
+                // JDK-8268657: do not trust the cached firstStyleableAncestor weak
+                // reference here. During a stylesheet swap (clear()+add()) the parent's
+                // style helper may be rebuilt after the child resolves, leaving the
+                // cached reference transiently empty/stale. Resolving against a null
+                // helper drops the looked-up color, so the raw String reaches the Paint
+                // converter and throws ClassCastException. Walk the live styleable parent
+                // chain instead so we always find the nearest ancestor that currently
+                // has a style helper.
+                Styleable styleableParent = findFirstStyleableAncestor(styleable);
                 CssStyleHelper parentStyleHelper = getStyleHelper((Node) styleableParent);
 
                 if (styleableParent == null || parentStyleHelper == null) {
