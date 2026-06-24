@@ -365,7 +365,9 @@ final class CssStyleHelper {
 
     /* This is the first Styleable parent (of Node this StyleHelper belongs to)
      * having a valid StyleHelper */
-    private WeakReference<Node> firstStyleableAncestor = EMPTY_NODE;
+    // Package-private (not private) so CssStyleHelperShim can force it stale in the
+    // JDK-8268657 regression test; see CssStyleHelperShim.clearCachedFirstStyleableAncestor.
+    WeakReference<Node> firstStyleableAncestor = EMPTY_NODE;
 
     private CacheContainer cacheContainer;
 
