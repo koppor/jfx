@@ -1168,7 +1168,24 @@ public abstract sealed class Node
         }
         scenesChanged(newScene, newSubScene, oldScene, oldSubScene);
 
-        if (sceneChanged) reapplyCSS();
+        if (sceneChanged) {
+            // JDK-8268657: a node that becomes a scene or sub-scene root mid-pulse
+            // (e.g. via Scene.setRoot / SubScene.setRoot inside a CSS-driven listener)
+            // must build its style map eagerly. Otherwise a descendant resolving a
+            // looked-up color defined on the new root (the .root rule) finds it
+            // unprocessed in the same in-flight pass and drops the color (String ->
+            // Paint ClassCastException). Forcing the flag to CLEAN lets reapplyCSS()
+            // fall through to the eager reapplyCss() instead of deferring at the
+            // UPDATE/DIRTY_BRANCH guards.
+            boolean becomesRoot = newScene != null
+                    && (newScene.getRoot() == this
+                        || (newSubScene != null && newSubScene.getRoot() == this));
+            if (becomesRoot) {
+                cssFlag = CssFlags.CLEAN;
+            }
+
+            reapplyCSS();
+        }
 
         if (sceneChanged && !isDirtyEmpty()) {
             //Note: no need to remove from scene's dirty list
