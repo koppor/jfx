@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -829,6 +829,55 @@ public abstract class Labeled extends Control {
     }
 
     /**
+     * Specifies whether the displayed text can be selected with the mouse.
+     * <p>
+     * When enabled, the user can select a range of the displayed text by
+     * pressing and dragging the mouse, select a word by double-clicking,
+     * or select all of the text by triple-clicking. Pressing the platform
+     * shortcut key together with {@code C} (or pressing the dedicated
+     * {@code COPY} key) copies the selected text to the system clipboard,
+     * and the platform shortcut key together with {@code A} selects all of
+     * the displayed text. The selection is cleared when the control loses
+     * focus or when the displayed text changes.
+     * <p>
+     * The selection operates on the text as it is displayed, that is after
+     * mnemonic parsing, wrapping and truncation have been applied.
+     * <p>
+     * When the text is selectable, pressing the mouse on the text requests
+     * focus for this control, so that the copy key combination is delivered
+     * to it.
+     *
+     * @return the property indicating whether the displayed text can be selected
+     * @defaultValue {@code false}
+     * @since 27
+     */
+    public final BooleanProperty textSelectableProperty() {
+        if (textSelectable == null) {
+            textSelectable = new StyleableBooleanProperty(false) {
+
+                @Override
+                public CssMetaData<Labeled, Boolean> getCssMetaData() {
+                    return StyleableProperties.TEXT_SELECTABLE;
+                }
+
+                @Override
+                public Object getBean() {
+                    return Labeled.this;
+                }
+
+                @Override
+                public String getName() {
+                    return "textSelectable";
+                }
+            };
+        }
+        return textSelectable;
+    }
+    private BooleanProperty textSelectable;
+    public final void setTextSelectable(boolean value) { textSelectableProperty().setValue(value); }
+    public final boolean isTextSelectable() { return textSelectable == null ? false : textSelectable.getValue(); }
+
+    /**
      * Indicates whether the text has been truncated
      * because it cannot fit into the available width.
      * <p>
@@ -1086,6 +1135,21 @@ public abstract class Labeled extends Control {
             }
         };
 
+        private static final CssMetaData<Labeled,Boolean> TEXT_SELECTABLE =
+            new CssMetaData<>("-fx-text-selectable",
+                BooleanConverter.getInstance(), Boolean.FALSE) {
+
+            @Override
+            public boolean isSettable(Labeled n) {
+                return n.textSelectable == null || !n.textSelectable.isBound();
+            }
+
+            @Override
+            public StyleableProperty<Boolean> getStyleableProperty(Labeled n) {
+                return (StyleableProperty<Boolean>)n.textSelectableProperty();
+            }
+        };
+
         private static final List<CssMetaData<? extends Styleable, ?>> STYLEABLES;
         static {
             final List<CssMetaData<? extends Styleable, ?>> styleables =
@@ -1103,7 +1167,8 @@ public abstract class Labeled extends Control {
                 LINE_SPACING,
                 CONTENT_DISPLAY,
                 LABEL_PADDING,
-                GRAPHIC_TEXT_GAP
+                GRAPHIC_TEXT_GAP,
+                TEXT_SELECTABLE
             );
             STYLEABLES = Collections.unmodifiableList(styleables);
         }

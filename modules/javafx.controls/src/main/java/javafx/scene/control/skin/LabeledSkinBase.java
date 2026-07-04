@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -30,9 +30,11 @@ import static javafx.scene.control.ContentDisplay.LEFT;
 import static javafx.scene.control.ContentDisplay.RIGHT;
 import static javafx.scene.control.ContentDisplay.TOP;
 import static javafx.scene.control.OverrunStyle.CLIP;
+import java.text.BreakIterator;
 import java.util.concurrent.atomic.AtomicBoolean;
 import javafx.application.Platform;
 import javafx.beans.InvalidationListener;
+import javafx.event.EventHandler;
 import javafx.geometry.HPos;
 import javafx.geometry.NodeOrientation;
 import javafx.geometry.Orientation;
@@ -40,6 +42,7 @@ import javafx.geometry.Point2D;
 import javafx.geometry.Pos;
 import javafx.geometry.VPos;
 import javafx.scene.AccessibleAttribute;
+import javafx.scene.Cursor;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.ContentDisplay;
@@ -49,11 +52,22 @@ import javafx.scene.control.Labeled;
 import javafx.scene.control.OverrunStyle;
 import javafx.scene.control.SkinBase;
 import javafx.scene.image.ImageView;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
+import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCombination;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.input.Mnemonic;
+import javafx.scene.input.MouseButton;
+import javafx.scene.input.MouseEvent;
+import javafx.scene.paint.Color;
+import javafx.scene.paint.Paint;
 import javafx.scene.shape.Line;
+import javafx.scene.shape.Path;
+import javafx.scene.shape.PathElement;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Font;
+import javafx.scene.text.HitInfo;
 import com.sun.javafx.scene.control.LabeledHelper;
 import com.sun.javafx.scene.control.LabeledText;
 import com.sun.javafx.scene.control.behavior.MnemonicInfo;
@@ -135,6 +149,13 @@ public abstract class LabeledSkinBase<C extends Labeled> extends SkinBase<C> {
     // needs to be an object, as MenuItem isn't a node
     private Node labeledNode = null;
     private final AtomicBoolean textTruncated = new AtomicBoolean();
+
+    /**
+     * Handles selection of the displayed text while the Labeled's
+     * {@code textSelectable} property is enabled, otherwise null.
+     * This is package private ONLY FOR THE SAKE OF TESTING.
+     */
+    TextSelectionSupport selectionSupport;
 
 
 
@@ -232,6 +253,8 @@ public abstract class LabeledSkinBase<C extends Labeled> extends SkinBase<C> {
         registerChangeListener(labeled.underlineProperty(), o -> textMetricsChanged());
         registerChangeListener(labeled.lineSpacingProperty(), o -> textMetricsChanged());
         registerChangeListener(labeled.sceneProperty(), o -> sceneChanged());
+        registerChangeListener(labeled.textSelectableProperty(), o -> updateTextSelectionSupport());
+        updateTextSelectionSupport();
     }
 
 
@@ -244,6 +267,10 @@ public abstract class LabeledSkinBase<C extends Labeled> extends SkinBase<C> {
 
     @Override
     public void dispose() {
+        if (selectionSupport != null) {
+            selectionSupport.dispose();
+            selectionSupport = null;
+        }
         if (graphic != null) {
             graphic.layoutBoundsProperty().removeListener(graphicPropertyChangedListener);
             graphic = null;
@@ -291,6 +318,10 @@ public abstract class LabeledSkinBase<C extends Labeled> extends SkinBase<C> {
             } else {
                 getChildren().setAll(graphic, text);
             }
+        }
+
+        if (selectionSupport != null) {
+            selectionSupport.updateHighlightPathInChildren();
         }
     }
 
@@ -1244,5 +1275,241 @@ public abstract class LabeledSkinBase<C extends Labeled> extends SkinBase<C> {
         return (txt == null ||
                 txt.equals("") ||
                 labeled.getContentDisplay() == ContentDisplay.GRAPHIC_ONLY);
+    }
+
+    /**
+     * Creates or disposes the text selection support in response to a change
+     * of the Labeled's {@code textSelectable} property.
+     */
+    private void updateTextSelectionSupport() {
+        if (getSkinnable().isTextSelectable()) {
+            if (selectionSupport == null) {
+                selectionSupport = new TextSelectionSupport();
+            }
+        } else if (selectionSupport != null) {
+            selectionSupport.dispose();
+            selectionSupport = null;
+        }
+    }
+
+    /**
+     * Implements selection of the displayed text with the mouse, and copying
+     * the selection to the system clipboard, while the Labeled's
+     * {@code textSelectable} property is enabled.
+     *
+     * The selection state is kept in the text node's {@code selectionStart}
+     * and {@code selectionEnd} properties, so the text node renders the
+     * selected characters with the selection fill. The selection highlight
+     * is rendered by an unmanaged Path placed directly beneath the text
+     * node, mirroring the text node's {@code selectionShape}.
+     *
+     * This is package private ONLY FOR THE SAKE OF TESTING.
+     */
+    class TextSelectionSupport {
+
+        private static final Color DEFAULT_HIGHLIGHT_FILL = Color.web("#0096C9");
+
+        private final Path highlightPath = new Path();
+        private final Cursor oldCursor;
+        private final boolean oldPickOnBounds;
+        private final Paint oldSelectionFill;
+
+        /**
+         * The index of the fixed end of the selection during a press-drag
+         * gesture, in terms of the displayed text, or -1 when no selection
+         * gesture is in progress.
+         */
+        private int anchor = -1;
+
+        private final EventHandler<MouseEvent> mousePressedHandler = this::mousePressed;
+        private final EventHandler<MouseEvent> mouseDraggedHandler = this::mouseDragged;
+        private final EventHandler<KeyEvent> keyPressedHandler = this::keyPressed;
+        private final InvalidationListener selectionShapeListener = o -> updateHighlightPath();
+        private final InvalidationListener displayedTextListener = o -> clearSelection();
+        private final InvalidationListener focusListener = o -> {
+            if (!getSkinnable().isFocused()) {
+                clearSelection();
+            }
+        };
+
+        TextSelectionSupport() {
+            highlightPath.getStyleClass().add("selection-highlight");
+            highlightPath.setManaged(false);
+            highlightPath.setMouseTransparent(true);
+            highlightPath.setStroke(null);
+            highlightPath.setFill(DEFAULT_HIGHLIGHT_FILL);
+            // The path elements produced by the text node's selectionShape
+            // are in the text node's local coordinates, so the path has to
+            // follow the text node's position.
+            highlightPath.layoutXProperty().bind(text.layoutXProperty());
+            highlightPath.layoutYProperty().bind(text.layoutYProperty());
+
+            oldCursor = text.getCursor();
+            oldPickOnBounds = text.isPickOnBounds();
+            oldSelectionFill = text.getSelectionFill();
+
+            text.setCursor(Cursor.TEXT);
+            // Also make the empty areas within the text's bounds (for example
+            // between wrapped lines) pickable.
+            text.setPickOnBounds(true);
+            text.setSelectionFill(Color.WHITE);
+
+            text.addEventHandler(MouseEvent.MOUSE_PRESSED, mousePressedHandler);
+            text.addEventHandler(MouseEvent.MOUSE_DRAGGED, mouseDraggedHandler);
+            text.selectionShapeProperty().addListener(selectionShapeListener);
+            text.textProperty().addListener(displayedTextListener);
+
+            getSkinnable().addEventHandler(KeyEvent.KEY_PRESSED, keyPressedHandler);
+            getSkinnable().focusedProperty().addListener(focusListener);
+
+            updateHighlightPathInChildren();
+        }
+
+        void dispose() {
+            clearSelection();
+
+            getSkinnable().removeEventHandler(KeyEvent.KEY_PRESSED, keyPressedHandler);
+            getSkinnable().focusedProperty().removeListener(focusListener);
+
+            text.removeEventHandler(MouseEvent.MOUSE_PRESSED, mousePressedHandler);
+            text.removeEventHandler(MouseEvent.MOUSE_DRAGGED, mouseDraggedHandler);
+            text.selectionShapeProperty().removeListener(selectionShapeListener);
+            text.textProperty().removeListener(displayedTextListener);
+
+            text.setCursor(oldCursor);
+            text.setPickOnBounds(oldPickOnBounds);
+            text.setSelectionFill(oldSelectionFill);
+
+            highlightPath.layoutXProperty().unbind();
+            highlightPath.layoutYProperty().unbind();
+            getChildren().remove(highlightPath);
+        }
+
+        /**
+         * (Re-)inserts the highlight path directly beneath the text node.
+         * Called after the children of the skin have been rebuilt.
+         */
+        void updateHighlightPathInChildren() {
+            getChildren().remove(highlightPath);
+            int index = getChildren().indexOf(text);
+            if (index >= 0) {
+                getChildren().add(index, highlightPath);
+            }
+        }
+
+        private void mousePressed(MouseEvent e) {
+            if (e.getButton() != MouseButton.PRIMARY) {
+                return;
+            }
+            Labeled labeled = getSkinnable();
+            if (!labeled.isFocused()) {
+                // Focus is needed for the copy key combination to be
+                // delivered to this control.
+                labeled.requestFocus();
+            }
+            String displayedText = text.getText();
+            if (displayedText == null || displayedText.isEmpty()) {
+                return;
+            }
+            HitInfo hit = text.hitTest(new Point2D(e.getX(), e.getY()));
+            switch (e.getClickCount()) {
+                case 2 -> selectWord(hit.getCharIndex());
+                case 3 -> selectAll();
+                default -> {
+                    anchor = hit.getInsertionIndex();
+                    select(anchor, anchor);
+                }
+            }
+        }
+
+        private void mouseDragged(MouseEvent e) {
+            if (anchor < 0 || e.getButton() != MouseButton.PRIMARY
+                    || e.isMiddleButtonDown() || e.isSecondaryButtonDown()) {
+                return;
+            }
+            HitInfo hit = text.hitTest(new Point2D(e.getX(), e.getY()));
+            int extent = hit.getInsertionIndex();
+            select(Math.min(anchor, extent), Math.max(anchor, extent));
+        }
+
+        private void keyPressed(KeyEvent e) {
+            boolean isCopy = (e.getCode() == KeyCode.C && e.isShortcutDown())
+                    || e.getCode() == KeyCode.COPY;
+            if (isCopy) {
+                if (copySelectionToClipboard()) {
+                    e.consume();
+                }
+            } else if (e.getCode() == KeyCode.A && e.isShortcutDown()) {
+                selectAll();
+                e.consume();
+            }
+        }
+
+        private void selectWord(int index) {
+            String displayedText = text.getText();
+            if (displayedText == null || displayedText.isEmpty()) {
+                return;
+            }
+            int length = displayedText.length();
+            int charIndex = Math.max(0, Math.min(index, length - 1));
+            BreakIterator wordIterator = BreakIterator.getWordInstance();
+            wordIterator.setText(displayedText);
+            int end = wordIterator.following(charIndex);
+            if (end == BreakIterator.DONE) {
+                end = length;
+            }
+            int start = wordIterator.previous();
+            if (start == BreakIterator.DONE) {
+                start = 0;
+            }
+            anchor = start;
+            select(start, end);
+        }
+
+        private void selectAll() {
+            String displayedText = text.getText();
+            if (displayedText == null || displayedText.isEmpty()) {
+                return;
+            }
+            anchor = 0;
+            select(0, displayedText.length());
+        }
+
+        private void select(int start, int end) {
+            if (start < end) {
+                text.setSelectionStart(start);
+                text.setSelectionEnd(end);
+            } else {
+                text.setSelectionStart(-1);
+                text.setSelectionEnd(-1);
+            }
+        }
+
+        private void clearSelection() {
+            anchor = -1;
+            select(-1, -1);
+        }
+
+        private boolean copySelectionToClipboard() {
+            String displayedText = text.getText();
+            int start = text.getSelectionStart();
+            int end = text.getSelectionEnd();
+            if (displayedText == null || start < 0 || end <= start || end > displayedText.length()) {
+                return false;
+            }
+            ClipboardContent content = new ClipboardContent();
+            content.putString(displayedText.substring(start, end));
+            Clipboard.getSystemClipboard().setContent(content);
+            return true;
+        }
+
+        private void updateHighlightPath() {
+            PathElement[] elements = text.getSelectionShape();
+            if (elements == null) {
+                highlightPath.getElements().clear();
+            } else {
+                highlightPath.getElements().setAll(elements);
+            }
+        }
     }
 }
