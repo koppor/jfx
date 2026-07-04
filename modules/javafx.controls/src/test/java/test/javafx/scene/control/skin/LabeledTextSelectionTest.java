@@ -31,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import javafx.css.CssMetaData;
+import javafx.scene.AccessibleAttribute;
 import javafx.scene.Cursor;
 import javafx.scene.Group;
 import javafx.scene.Node;
@@ -44,6 +45,7 @@ import javafx.scene.control.skin.LabeledSkinBaseShim;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.MouseEvent;
+import javafx.scene.paint.Color;
 import javafx.scene.shape.Path;
 import javafx.scene.text.Text;
 import org.junit.jupiter.api.AfterEach;
@@ -165,6 +167,7 @@ public class LabeledTextSelectionTest {
         assertNull(text.getCursor());
         assertEquals(-1, text.getSelectionStart());
         assertEquals(-1, text.getSelectionEnd());
+        assertEquals("", label.getSelectedText());
     }
 
     @Test public void highlightPathFollowsTextIntoAndOutOfChildrenList() {
@@ -282,6 +285,7 @@ public class LabeledTextSelectionTest {
         LabeledSkinBaseShim.updateDisplayedText(skin);
         assertEquals(-1, text.getSelectionStart());
         assertEquals(-1, text.getSelectionEnd());
+        assertEquals("", label.getSelectedText());
         assertTrue(getHighlightPath().getElements().isEmpty());
     }
 
@@ -298,5 +302,70 @@ public class LabeledTextSelectionTest {
         assertFalse(label.isFocused());
         assertEquals(-1, text.getSelectionStart());
         assertEquals(-1, text.getSelectionEnd());
+        assertEquals("", label.getSelectedText());
+    }
+
+    /* ***********************************************************************
+     * selectedText property                                                 *
+     ************************************************************************/
+
+    @Test public void selectedTextReflectsSelection() {
+        assertEquals("", label.getSelectedText());
+        label.setTextSelectable(true);
+
+        firePress(2, 1); // selects the word "The"
+        assertEquals("The", label.getSelectedText());
+
+        fireDrag(text.getLayoutBounds().getWidth() + 10); // extends to the end
+        assertEquals(TEXT, label.getSelectedText());
+
+        firePress(1, 1); // collapses the selection
+        assertEquals("", label.getSelectedText());
+    }
+
+    @Test public void selectedTextPropertyIsObservable() {
+        label.setTextSelectable(true);
+        String[] observed = new String[1];
+        label.selectedTextProperty().addListener((o, old, value) -> observed[0] = value);
+        firePress(3, 1);
+        assertEquals(TEXT, observed[0]);
+    }
+
+    /* ***********************************************************************
+     * Highlight colors                                                      *
+     ************************************************************************/
+
+    @Test public void defaultHighlightColorsApply() {
+        label.setTextSelectable(true);
+        firePress(3, 1);
+        assertEquals(Color.web("#0096C9"), getHighlightPath().getFill());
+        assertEquals(Color.WHITE, text.getSelectionFill());
+    }
+
+    @Test public void highlightColorsAreStyleableWithCss() {
+        label.setTextSelectable(true);
+        label.setStyle("-fx-highlight-fill: red; -fx-highlight-text-fill: lime;");
+        label.applyCss();
+        firePress(3, 1);
+        assertEquals(Color.RED, getHighlightPath().getFill());
+        assertEquals(Color.LIME, text.getSelectionFill());
+    }
+
+    /* ***********************************************************************
+     * Accessibility                                                         *
+     ************************************************************************/
+
+    @Test public void accessibleSelectionAttributesReflectSelection() {
+        label.setTextSelectable(true);
+        assertNull(label.queryAccessibleAttribute(AccessibleAttribute.SELECTION_START));
+        assertNull(label.queryAccessibleAttribute(AccessibleAttribute.SELECTION_END));
+
+        firePress(2, 1); // selects the word "The"
+        assertEquals(0, ((Integer) label.queryAccessibleAttribute(AccessibleAttribute.SELECTION_START)).intValue());
+        assertEquals(3, ((Integer) label.queryAccessibleAttribute(AccessibleAttribute.SELECTION_END)).intValue());
+
+        firePress(1, 1); // collapses the selection
+        assertNull(label.queryAccessibleAttribute(AccessibleAttribute.SELECTION_START));
+        assertNull(label.queryAccessibleAttribute(AccessibleAttribute.SELECTION_END));
     }
 }

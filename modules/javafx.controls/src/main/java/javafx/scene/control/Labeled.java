@@ -36,6 +36,8 @@ import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.ReadOnlyBooleanProperty;
 import javafx.beans.property.ReadOnlyBooleanWrapper;
 import javafx.beans.property.ReadOnlyObjectProperty;
+import javafx.beans.property.ReadOnlyStringProperty;
+import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
@@ -103,6 +105,11 @@ public abstract class Labeled extends Control {
             @Override
             public void setTextTruncated(Labeled c, boolean on) {
                 c.setTextTruncated(on);
+            }
+
+            @Override
+            public void setSelectedText(Labeled c, String value) {
+                c.setSelectedText(value);
             }
         });
     }
@@ -841,11 +848,17 @@ public abstract class Labeled extends Control {
      * focus or when the displayed text changes.
      * <p>
      * The selection operates on the text as it is displayed, that is after
-     * mnemonic parsing, wrapping and truncation have been applied.
+     * mnemonic parsing, wrapping and truncation have been applied. The
+     * currently selected text is exposed by the read-only
+     * {@link #selectedTextProperty() selectedText} property.
      * <p>
      * When the text is selectable, pressing the mouse on the text requests
      * focus for this control, so that the copy key combination is delivered
      * to it.
+     * <p>
+     * The colors used to render the selection can be styled with the
+     * {@code -fx-highlight-fill} and {@code -fx-highlight-text-fill} CSS
+     * properties of the skin.
      *
      * @return the property indicating whether the displayed text can be selected
      * @defaultValue {@code false}
@@ -876,6 +889,38 @@ public abstract class Labeled extends Control {
     private BooleanProperty textSelectable;
     public final void setTextSelectable(boolean value) { textSelectableProperty().setValue(value); }
     public final boolean isTextSelectable() { return textSelectable == null ? false : textSelectable.getValue(); }
+
+    /**
+     * The text currently selected by the user, or an empty string when
+     * nothing is selected.
+     * <p>
+     * A selection can only exist while the
+     * {@link #textSelectableProperty() textSelectable} property is enabled.
+     * The selected text is a substring of the text as it is displayed, that
+     * is after mnemonic parsing, wrapping and truncation have been applied.
+     *
+     * @since 27
+     */
+    private ReadOnlyStringWrapper selectedText;
+
+    public final ReadOnlyStringProperty selectedTextProperty() {
+        return selectedTextImpl().getReadOnlyProperty();
+    }
+
+    public final String getSelectedText() {
+        return selectedText == null ? "" : selectedText.get();
+    }
+
+    private void setSelectedText(String value) {
+        selectedTextImpl().set(value == null ? "" : value);
+    }
+
+    private ReadOnlyStringWrapper selectedTextImpl() {
+        if (selectedText == null) {
+            selectedText = new ReadOnlyStringWrapper(this, "selectedText", "");
+        }
+        return selectedText;
+    }
 
     /**
      * Indicates whether the text has been truncated

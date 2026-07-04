@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2024, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -39,6 +39,13 @@ public class LabeledHelper {
          * @param on the value of the text truncated flag
          */
         public void setTextTruncated(Labeled c, boolean on);
+
+        /**
+         * Sets the selected text.
+         * @param c the Labeled control
+         * @param value the selected text, or an empty string when there is no selection
+         */
+        public void setSelectedText(Labeled c, String value);
     }
 
     private static Accessor accessor;
@@ -56,5 +63,9 @@ public class LabeledHelper {
 
     public static void setTextTruncated(Labeled c, boolean on) {
         accessor.setTextTruncated(c, on);
+    }
+
+    public static void setSelectedText(Labeled c, String value) {
+        accessor.setSelectedText(c, value);
     }
 }

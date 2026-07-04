@@ -93,6 +93,14 @@ public class SelectableLabelTest extends Application {
         Label styled = new Label("This label is enabled via CSS: -fx-text-selectable: true");
         styled.setStyle("-fx-text-selectable: true;");
 
+        Label coloredSelection = new Label("Custom selection colors via -fx-highlight-fill and -fx-highlight-text-fill");
+        coloredSelection.setTextSelectable(true);
+        coloredSelection.setStyle("-fx-highlight-fill: #c2185b; -fx-highlight-text-fill: #ffee58;");
+
+        Label selectedTextMonitor = new Label();
+        selectedTextMonitor.textProperty().bind(javafx.beans.binding.Bindings.format(
+                "Labeled.selectedText of the first label: '%s'", plain.selectedTextProperty()));
+
         Label notSelectable = new Label("Regular label for comparison — not selectable");
 
         Button button = new Button("Selectable Button text (still fires its action)");
@@ -118,6 +126,8 @@ public class SelectableLabelTest extends Application {
                 mnemonic,
                 withGraphic,
                 styled,
+                coloredSelection,
+                selectedTextMonitor,
                 notSelectable,
                 button,
                 toggle,

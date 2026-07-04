@@ -31,9 +31,18 @@ import static javafx.scene.control.ContentDisplay.RIGHT;
 import static javafx.scene.control.ContentDisplay.TOP;
 import static javafx.scene.control.OverrunStyle.CLIP;
 import java.text.BreakIterator;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import javafx.application.Platform;
 import javafx.beans.InvalidationListener;
+import javafx.beans.property.ObjectProperty;
+import javafx.css.CssMetaData;
+import javafx.css.Styleable;
+import javafx.css.StyleableObjectProperty;
+import javafx.css.StyleableProperty;
+import javafx.css.converter.PaintConverter;
 import javafx.event.EventHandler;
 import javafx.geometry.HPos;
 import javafx.geometry.NodeOrientation;
@@ -156,6 +165,100 @@ public abstract class LabeledSkinBase<C extends Labeled> extends SkinBase<C> {
      * This is package private ONLY FOR THE SAKE OF TESTING.
      */
     TextSelectionSupport selectionSupport;
+
+    private static final Color DEFAULT_HIGHLIGHT_FILL = Color.web("#0096C9");
+
+    /**
+     * The fill used for the selection highlight behind the selected text,
+     * while the Labeled's {@link Labeled#textSelectableProperty() textSelectable}
+     * property is enabled. It can be styled with CSS as {@code -fx-highlight-fill}.
+     */
+    private final ObjectProperty<Paint> highlightFill = new StyleableObjectProperty<Paint>(DEFAULT_HIGHLIGHT_FILL) {
+        @Override public Object getBean() {
+            return LabeledSkinBase.this;
+        }
+
+        @Override public String getName() {
+            return "highlightFill";
+        }
+
+        @Override public CssMetaData<Labeled,Paint> getCssMetaData() {
+            return StyleableProperties.HIGHLIGHT_FILL;
+        }
+    };
+
+    /**
+     * The fill used for the selected text, while the Labeled's
+     * {@link Labeled#textSelectableProperty() textSelectable} property is
+     * enabled. It can be styled with CSS as {@code -fx-highlight-text-fill}.
+     */
+    private final ObjectProperty<Paint> highlightTextFill = new StyleableObjectProperty<Paint>(Color.WHITE) {
+        @Override public Object getBean() {
+            return LabeledSkinBase.this;
+        }
+
+        @Override public String getName() {
+            return "highlightTextFill";
+        }
+
+        @Override public CssMetaData<Labeled,Paint> getCssMetaData() {
+            return StyleableProperties.HIGHLIGHT_TEXT_FILL;
+        }
+    };
+
+    /**
+     * The fill {@code Paint} used for the background of selected text.
+     * @param value the highlight fill
+     * @since 27
+     */
+    protected final void setHighlightFill(Paint value) {
+        highlightFill.set(value);
+    }
+
+    /**
+     * The fill {@code Paint} used for the background of selected text.
+     * @return the highlight fill
+     * @since 27
+     */
+    protected final Paint getHighlightFill() {
+        return highlightFill.get();
+    }
+
+    /**
+     * The fill {@code Paint} used for the background of selected text.
+     * @return the highlight fill property
+     * @since 27
+     */
+    protected final ObjectProperty<Paint> highlightFillProperty() {
+        return highlightFill;
+    }
+
+    /**
+     * The fill {@code Paint} used for the foreground of selected text.
+     * @param value the highlight text fill
+     * @since 27
+     */
+    protected final void setHighlightTextFill(Paint value) {
+        highlightTextFill.set(value);
+    }
+
+    /**
+     * The fill {@code Paint} used for the foreground of selected text.
+     * @return the highlight text fill
+     * @since 27
+     */
+    protected final Paint getHighlightTextFill() {
+        return highlightTextFill.get();
+    }
+
+    /**
+     * The fill {@code Paint} used for the foreground of selected text.
+     * @return the highlight text fill property
+     * @since 27
+     */
+    protected final ObjectProperty<Paint> highlightTextFillProperty() {
+        return highlightTextFill;
+    }
 
 
 
@@ -803,6 +906,18 @@ public abstract class LabeledSkinBase<C extends Labeled> extends SkinBase<C> {
                 }
                 return null;
             }
+            case SELECTION_START: {
+                if (selectionSupport != null && text.getSelectionStart() >= 0) {
+                    return text.getSelectionStart();
+                }
+                return super.queryAccessibleAttribute(attribute, parameters);
+            }
+            case SELECTION_END: {
+                if (selectionSupport != null && text.getSelectionEnd() >= 0) {
+                    return text.getSelectionEnd();
+                }
+                return super.queryAccessibleAttribute(attribute, parameters);
+            }
             default: return super.queryAccessibleAttribute(attribute, parameters);
         }
     }
@@ -1277,6 +1392,66 @@ public abstract class LabeledSkinBase<C extends Labeled> extends SkinBase<C> {
                 labeled.getContentDisplay() == ContentDisplay.GRAPHIC_ONLY);
     }
 
+    private static class StyleableProperties {
+        private static final CssMetaData<Labeled,Paint> HIGHLIGHT_FILL =
+            new CssMetaData<>("-fx-highlight-fill",
+                PaintConverter.getInstance(), DEFAULT_HIGHLIGHT_FILL) {
+
+            @Override public boolean isSettable(Labeled n) {
+                final LabeledSkinBase<?> skin = (LabeledSkinBase<?>) n.getSkin();
+                return skin.highlightFill == null || !skin.highlightFill.isBound();
+            }
+
+            @Override @SuppressWarnings("unchecked")
+            public StyleableProperty<Paint> getStyleableProperty(Labeled n) {
+                final LabeledSkinBase<?> skin = (LabeledSkinBase<?>) n.getSkin();
+                return (StyleableProperty<Paint>)skin.highlightFill;
+            }
+        };
+
+        private static final CssMetaData<Labeled,Paint> HIGHLIGHT_TEXT_FILL =
+            new CssMetaData<>("-fx-highlight-text-fill",
+                PaintConverter.getInstance(), Color.WHITE) {
+
+            @Override public boolean isSettable(Labeled n) {
+                final LabeledSkinBase<?> skin = (LabeledSkinBase<?>) n.getSkin();
+                return skin.highlightTextFill == null || !skin.highlightTextFill.isBound();
+            }
+
+            @Override @SuppressWarnings("unchecked")
+            public StyleableProperty<Paint> getStyleableProperty(Labeled n) {
+                final LabeledSkinBase<?> skin = (LabeledSkinBase<?>) n.getSkin();
+                return (StyleableProperty<Paint>)skin.highlightTextFill;
+            }
+        };
+
+        private static final List<CssMetaData<? extends Styleable, ?>> STYLEABLES;
+        static {
+            List<CssMetaData<? extends Styleable, ?>> styleables =
+                new ArrayList<>(SkinBase.getClassCssMetaData());
+            styleables.add(HIGHLIGHT_FILL);
+            styleables.add(HIGHLIGHT_TEXT_FILL);
+            STYLEABLES = Collections.unmodifiableList(styleables);
+        }
+    }
+
+    /**
+     * Returns the CssMetaData associated with this class, which may include the
+     * CssMetaData of its superclasses.
+     * @return the CssMetaData associated with this class, which may include the
+     * CssMetaData of its superclasses
+     * @since 27
+     */
+    public static List<CssMetaData<? extends Styleable, ?>> getClassCssMetaData() {
+        return StyleableProperties.STYLEABLES;
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public List<CssMetaData<? extends Styleable, ?>> getCssMetaData() {
+        return getClassCssMetaData();
+    }
+
     /**
      * Creates or disposes the text selection support in response to a change
      * of the Labeled's {@code textSelectable} property.
@@ -1307,8 +1482,6 @@ public abstract class LabeledSkinBase<C extends Labeled> extends SkinBase<C> {
      */
     class TextSelectionSupport {
 
-        private static final Color DEFAULT_HIGHLIGHT_FILL = Color.web("#0096C9");
-
         private final Path highlightPath = new Path();
         private final Cursor oldCursor;
         private final boolean oldPickOnBounds;
@@ -1320,6 +1493,15 @@ public abstract class LabeledSkinBase<C extends Labeled> extends SkinBase<C> {
          * gesture is in progress.
          */
         private int anchor = -1;
+
+        /**
+         * The selection range that was last applied by {@link #select}, or
+         * -1/-1 when there is no selection. This cannot be derived from the
+         * text node's selectionStart/End properties, because the text node
+         * resets those itself when its text changes.
+         */
+        private int selectionStart = -1;
+        private int selectionEnd = -1;
 
         private final EventHandler<MouseEvent> mousePressedHandler = this::mousePressed;
         private final EventHandler<MouseEvent> mouseDraggedHandler = this::mouseDragged;
@@ -1337,7 +1519,7 @@ public abstract class LabeledSkinBase<C extends Labeled> extends SkinBase<C> {
             highlightPath.setManaged(false);
             highlightPath.setMouseTransparent(true);
             highlightPath.setStroke(null);
-            highlightPath.setFill(DEFAULT_HIGHLIGHT_FILL);
+            highlightPath.fillProperty().bind(highlightFill);
             // The path elements produced by the text node's selectionShape
             // are in the text node's local coordinates, so the path has to
             // follow the text node's position.
@@ -1352,7 +1534,7 @@ public abstract class LabeledSkinBase<C extends Labeled> extends SkinBase<C> {
             // Also make the empty areas within the text's bounds (for example
             // between wrapped lines) pickable.
             text.setPickOnBounds(true);
-            text.setSelectionFill(Color.WHITE);
+            text.selectionFillProperty().bind(highlightTextFill);
 
             text.addEventHandler(MouseEvent.MOUSE_PRESSED, mousePressedHandler);
             text.addEventHandler(MouseEvent.MOUSE_DRAGGED, mouseDraggedHandler);
@@ -1378,8 +1560,10 @@ public abstract class LabeledSkinBase<C extends Labeled> extends SkinBase<C> {
 
             text.setCursor(oldCursor);
             text.setPickOnBounds(oldPickOnBounds);
+            text.selectionFillProperty().unbind();
             text.setSelectionFill(oldSelectionFill);
 
+            highlightPath.fillProperty().unbind();
             highlightPath.layoutXProperty().unbind();
             highlightPath.layoutYProperty().unbind();
             getChildren().remove(highlightPath);
@@ -1476,13 +1660,26 @@ public abstract class LabeledSkinBase<C extends Labeled> extends SkinBase<C> {
         }
 
         private void select(int start, int end) {
-            if (start < end) {
-                text.setSelectionStart(start);
-                text.setSelectionEnd(end);
-            } else {
-                text.setSelectionStart(-1);
-                text.setSelectionEnd(-1);
+            if (start >= end) {
+                start = -1;
+                end = -1;
             }
+            if (start == selectionStart && end == selectionEnd) {
+                return;
+            }
+            selectionStart = start;
+            selectionEnd = end;
+            text.setSelectionStart(start);
+            text.setSelectionEnd(end);
+
+            Labeled labeled = getSkinnable();
+            String displayedText = text.getText();
+            String selected = (start >= 0 && displayedText != null && end <= displayedText.length())
+                    ? displayedText.substring(start, end)
+                    : "";
+            LabeledHelper.setSelectedText(labeled, selected);
+            labeled.notifyAccessibleAttributeChanged(AccessibleAttribute.SELECTION_START);
+            labeled.notifyAccessibleAttributeChanged(AccessibleAttribute.SELECTION_END);
         }
 
         private void clearSelection() {
@@ -1491,14 +1688,12 @@ public abstract class LabeledSkinBase<C extends Labeled> extends SkinBase<C> {
         }
 
         private boolean copySelectionToClipboard() {
-            String displayedText = text.getText();
-            int start = text.getSelectionStart();
-            int end = text.getSelectionEnd();
-            if (displayedText == null || start < 0 || end <= start || end > displayedText.length()) {
+            String selected = getSkinnable().getSelectedText();
+            if (selected == null || selected.isEmpty()) {
                 return false;
             }
             ClipboardContent content = new ClipboardContent();
-            content.putString(displayedText.substring(start, end));
+            content.putString(selected);
             Clipboard.getSystemClipboard().setContent(content);
             return true;
         }

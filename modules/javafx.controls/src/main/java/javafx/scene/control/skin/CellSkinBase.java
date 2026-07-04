@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -41,7 +41,6 @@ import javafx.beans.property.ReadOnlyDoubleProperty;
 import javafx.css.Styleable;
 import javafx.css.StyleableProperty;
 import javafx.scene.control.Control;
-import javafx.scene.control.SkinBase;
 
 /**
  * Default skin implementation for the {@link Cell} control, and subclasses such
@@ -176,7 +175,7 @@ public class CellSkinBase<C extends Cell> extends LabeledSkinBase<C> {
          static {
 
             final List<CssMetaData<? extends Styleable, ?>> styleables =
-                new ArrayList<>(SkinBase.getClassCssMetaData());
+                new ArrayList<>(LabeledSkinBase.getClassCssMetaData());
             styleables.add(CELL_SIZE);
             STYLEABLES = Collections.unmodifiableList(styleables);
 
