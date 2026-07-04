@@ -44,10 +44,12 @@ import javafx.scene.control.skin.LabeledSkinBase;
 import javafx.scene.control.skin.LabeledSkinBaseShim;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.KeyCode;
+import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Path;
 import javafx.scene.text.Text;
+import javafx.event.Event;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -226,6 +228,27 @@ public class LabeledTextSelectionTest {
         firePress(3, 1);
         assertEquals(0, text.getSelectionStart());
         assertEquals(TEXT.length(), text.getSelectionEnd());
+    }
+
+    @Test public void disabledControlDoesNotSelect() {
+        label.setTextSelectable(true);
+        label.setDisable(true);
+        firePress(3, 1);
+        assertEquals(-1, text.getSelectionStart());
+        assertEquals("", label.getSelectedText());
+        assertFalse(label.isFocused());
+    }
+
+    @Test public void synthesizedMouseEventsAreIgnored() {
+        label.setTextSelectable(true);
+        // A synthesized (touch) triple press would select all if it were not
+        // ignored. The coordinates are irrelevant for the select-all path.
+        MouseEvent press = new MouseEvent(MouseEvent.MOUSE_PRESSED, 1, 0, 0, 0,
+                MouseButton.PRIMARY, 3, false, false, false, false,
+                true, false, false, true, false, true, null);
+        Event.fireEvent(text, press);
+        assertEquals(-1, text.getSelectionStart());
+        assertEquals("", label.getSelectedText());
     }
 
     @Test public void singleClickClearsPreviousSelection() {

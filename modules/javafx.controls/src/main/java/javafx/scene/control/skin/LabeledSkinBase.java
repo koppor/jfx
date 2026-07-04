@@ -166,7 +166,20 @@ public abstract class LabeledSkinBase<C extends Labeled> extends SkinBase<C> {
      */
     TextSelectionSupport selectionSupport;
 
+    /**
+     * The default fill of the selection highlight: the value of Modena's
+     * {@code -fx-accent}, which is what Modena also uses to highlight the
+     * selection in focused text inputs.
+     */
     private static final Color DEFAULT_HIGHLIGHT_FILL = Color.web("#0096C9");
+
+
+
+    /* *************************************************************************
+     *                                                                         *
+     * Properties                                                              *
+     *                                                                         *
+     **************************************************************************/
 
     /**
      * The fill used for the selection highlight behind the selected text,
@@ -907,16 +920,16 @@ public abstract class LabeledSkinBase<C extends Labeled> extends SkinBase<C> {
                 return null;
             }
             case SELECTION_START: {
-                if (selectionSupport != null && text.getSelectionStart() >= 0) {
-                    return text.getSelectionStart();
+                if (selectionSupport != null && selectionSupport.selectionStart >= 0) {
+                    return selectionSupport.selectionStart;
                 }
-                return super.queryAccessibleAttribute(attribute, parameters);
+                return null;
             }
             case SELECTION_END: {
-                if (selectionSupport != null && text.getSelectionEnd() >= 0) {
-                    return text.getSelectionEnd();
+                if (selectionSupport != null && selectionSupport.selectionEnd >= 0) {
+                    return selectionSupport.selectionEnd;
                 }
-                return super.queryAccessibleAttribute(attribute, parameters);
+                return null;
             }
             default: return super.queryAccessibleAttribute(attribute, parameters);
         }
@@ -1392,66 +1405,6 @@ public abstract class LabeledSkinBase<C extends Labeled> extends SkinBase<C> {
                 labeled.getContentDisplay() == ContentDisplay.GRAPHIC_ONLY);
     }
 
-    private static class StyleableProperties {
-        private static final CssMetaData<Labeled,Paint> HIGHLIGHT_FILL =
-            new CssMetaData<>("-fx-highlight-fill",
-                PaintConverter.getInstance(), DEFAULT_HIGHLIGHT_FILL) {
-
-            @Override public boolean isSettable(Labeled n) {
-                final LabeledSkinBase<?> skin = (LabeledSkinBase<?>) n.getSkin();
-                return skin.highlightFill == null || !skin.highlightFill.isBound();
-            }
-
-            @Override @SuppressWarnings("unchecked")
-            public StyleableProperty<Paint> getStyleableProperty(Labeled n) {
-                final LabeledSkinBase<?> skin = (LabeledSkinBase<?>) n.getSkin();
-                return (StyleableProperty<Paint>)skin.highlightFill;
-            }
-        };
-
-        private static final CssMetaData<Labeled,Paint> HIGHLIGHT_TEXT_FILL =
-            new CssMetaData<>("-fx-highlight-text-fill",
-                PaintConverter.getInstance(), Color.WHITE) {
-
-            @Override public boolean isSettable(Labeled n) {
-                final LabeledSkinBase<?> skin = (LabeledSkinBase<?>) n.getSkin();
-                return skin.highlightTextFill == null || !skin.highlightTextFill.isBound();
-            }
-
-            @Override @SuppressWarnings("unchecked")
-            public StyleableProperty<Paint> getStyleableProperty(Labeled n) {
-                final LabeledSkinBase<?> skin = (LabeledSkinBase<?>) n.getSkin();
-                return (StyleableProperty<Paint>)skin.highlightTextFill;
-            }
-        };
-
-        private static final List<CssMetaData<? extends Styleable, ?>> STYLEABLES;
-        static {
-            List<CssMetaData<? extends Styleable, ?>> styleables =
-                new ArrayList<>(SkinBase.getClassCssMetaData());
-            styleables.add(HIGHLIGHT_FILL);
-            styleables.add(HIGHLIGHT_TEXT_FILL);
-            STYLEABLES = Collections.unmodifiableList(styleables);
-        }
-    }
-
-    /**
-     * Returns the CssMetaData associated with this class, which may include the
-     * CssMetaData of its superclasses.
-     * @return the CssMetaData associated with this class, which may include the
-     * CssMetaData of its superclasses
-     * @since 27
-     */
-    public static List<CssMetaData<? extends Styleable, ?>> getClassCssMetaData() {
-        return StyleableProperties.STYLEABLES;
-    }
-
-    /** {@inheritDoc} */
-    @Override
-    public List<CssMetaData<? extends Styleable, ?>> getCssMetaData() {
-        return getClassCssMetaData();
-    }
-
     /**
      * Creates or disposes the text selection support in response to a change
      * of the Labeled's {@code textSelectable} property.
@@ -1582,7 +1535,11 @@ public abstract class LabeledSkinBase<C extends Labeled> extends SkinBase<C> {
         }
 
         private void mousePressed(MouseEvent e) {
-            if (e.getButton() != MouseButton.PRIMARY) {
+            // Synthesized events come from touch, which the text input
+            // behaviors ignore as well, so that touch gestures such as
+            // scrolling are not turned into selections.
+            if (e.getButton() != MouseButton.PRIMARY || e.isSynthesized()
+                    || getSkinnable().isDisabled()) {
                 return;
             }
             Labeled labeled = getSkinnable();
@@ -1597,18 +1554,23 @@ public abstract class LabeledSkinBase<C extends Labeled> extends SkinBase<C> {
             }
             HitInfo hit = text.hitTest(new Point2D(e.getX(), e.getY()));
             switch (e.getClickCount()) {
-                case 2 -> selectWord(hit.getCharIndex());
-                case 3 -> selectAll();
-                default -> {
+                case 2:
+                    selectWord(hit.getCharIndex());
+                    break;
+                case 3:
+                    selectAll();
+                    break;
+                default:
                     anchor = hit.getInsertionIndex();
                     select(anchor, anchor);
-                }
+                    break;
             }
         }
 
         private void mouseDragged(MouseEvent e) {
             if (anchor < 0 || e.getButton() != MouseButton.PRIMARY
-                    || e.isMiddleButtonDown() || e.isSecondaryButtonDown()) {
+                    || e.isMiddleButtonDown() || e.isSecondaryButtonDown()
+                    || e.isSynthesized() || getSkinnable().isDisabled()) {
                 return;
             }
             HitInfo hit = text.hitTest(new Point2D(e.getX(), e.getY()));
@@ -1617,6 +1579,9 @@ public abstract class LabeledSkinBase<C extends Labeled> extends SkinBase<C> {
         }
 
         private void keyPressed(KeyEvent e) {
+            if (e.isConsumed()) {
+                return;
+            }
             boolean isCopy = (e.getCode() == KeyCode.C && e.isShortcutDown())
                     || e.getCode() == KeyCode.COPY;
             if (isCopy) {
@@ -1689,7 +1654,7 @@ public abstract class LabeledSkinBase<C extends Labeled> extends SkinBase<C> {
 
         private boolean copySelectionToClipboard() {
             String selected = getSkinnable().getSelectedText();
-            if (selected == null || selected.isEmpty()) {
+            if (selected.isEmpty()) {
                 return false;
             }
             ClipboardContent content = new ClipboardContent();
@@ -1706,5 +1671,73 @@ public abstract class LabeledSkinBase<C extends Labeled> extends SkinBase<C> {
                 highlightPath.getElements().setAll(elements);
             }
         }
+    }
+
+
+
+    /* *************************************************************************
+     *                                                                         *
+     * Stylesheet Handling                                                     *
+     *                                                                         *
+     **************************************************************************/
+
+    private static class StyleableProperties {
+        private static final CssMetaData<Labeled,Paint> HIGHLIGHT_FILL =
+            new CssMetaData<>("-fx-highlight-fill",
+                PaintConverter.getInstance(), DEFAULT_HIGHLIGHT_FILL) {
+
+            @Override public boolean isSettable(Labeled n) {
+                final LabeledSkinBase<?> skin = (LabeledSkinBase<?>) n.getSkin();
+                return skin.highlightFill == null || !skin.highlightFill.isBound();
+            }
+
+            @Override @SuppressWarnings("unchecked")
+            public StyleableProperty<Paint> getStyleableProperty(Labeled n) {
+                final LabeledSkinBase<?> skin = (LabeledSkinBase<?>) n.getSkin();
+                return (StyleableProperty<Paint>)skin.highlightFill;
+            }
+        };
+
+        private static final CssMetaData<Labeled,Paint> HIGHLIGHT_TEXT_FILL =
+            new CssMetaData<>("-fx-highlight-text-fill",
+                PaintConverter.getInstance(), Color.WHITE) {
+
+            @Override public boolean isSettable(Labeled n) {
+                final LabeledSkinBase<?> skin = (LabeledSkinBase<?>) n.getSkin();
+                return skin.highlightTextFill == null || !skin.highlightTextFill.isBound();
+            }
+
+            @Override @SuppressWarnings("unchecked")
+            public StyleableProperty<Paint> getStyleableProperty(Labeled n) {
+                final LabeledSkinBase<?> skin = (LabeledSkinBase<?>) n.getSkin();
+                return (StyleableProperty<Paint>)skin.highlightTextFill;
+            }
+        };
+
+        private static final List<CssMetaData<? extends Styleable, ?>> STYLEABLES;
+        static {
+            List<CssMetaData<? extends Styleable, ?>> styleables =
+                new ArrayList<>(SkinBase.getClassCssMetaData());
+            styleables.add(HIGHLIGHT_FILL);
+            styleables.add(HIGHLIGHT_TEXT_FILL);
+            STYLEABLES = Collections.unmodifiableList(styleables);
+        }
+    }
+
+    /**
+     * Returns the CssMetaData associated with this class, which may include the
+     * CssMetaData of its superclasses.
+     * @return the CssMetaData associated with this class, which may include the
+     * CssMetaData of its superclasses
+     * @since 27
+     */
+    public static List<CssMetaData<? extends Styleable, ?>> getClassCssMetaData() {
+        return StyleableProperties.STYLEABLES;
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public List<CssMetaData<? extends Styleable, ?>> getCssMetaData() {
+        return getClassCssMetaData();
     }
 }

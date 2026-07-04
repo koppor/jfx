@@ -838,14 +838,14 @@ public abstract class Labeled extends Control {
     /**
      * Specifies whether the displayed text can be selected with the mouse.
      * <p>
-     * When enabled, the user can select a range of the displayed text by
-     * pressing and dragging the mouse, select a word by double-clicking,
-     * or select all of the text by triple-clicking. Pressing the platform
-     * shortcut key together with {@code C} (or pressing the dedicated
-     * {@code COPY} key) copies the selected text to the system clipboard,
-     * and the platform shortcut key together with {@code A} selects all of
-     * the displayed text. The selection is cleared when the control loses
-     * focus or when the displayed text changes.
+     * When enabled, the default skin lets the user select a range of the
+     * displayed text by pressing and dragging the mouse, select a word by
+     * double-clicking, or select all of the text by triple-clicking.
+     * Pressing the platform shortcut key together with {@code C} (or
+     * pressing the dedicated {@code COPY} key) copies the selected text to
+     * the system clipboard, and the platform shortcut key together with
+     * {@code A} selects all of the displayed text. The selection is cleared
+     * when the control loses focus or when the displayed text changes.
      * <p>
      * The selection operates on the text as it is displayed, that is after
      * mnemonic parsing, wrapping and truncation have been applied. The
@@ -904,7 +904,7 @@ public abstract class Labeled extends Control {
     private ReadOnlyStringWrapper selectedText;
 
     public final ReadOnlyStringProperty selectedTextProperty() {
-        return selectedTextImpl().getReadOnlyProperty();
+        return selectedTextPropertyImpl().getReadOnlyProperty();
     }
 
     public final String getSelectedText() {
@@ -912,10 +912,10 @@ public abstract class Labeled extends Control {
     }
 
     private void setSelectedText(String value) {
-        selectedTextImpl().set(value == null ? "" : value);
+        selectedTextPropertyImpl().set(value == null ? "" : value);
     }
 
-    private ReadOnlyStringWrapper selectedTextImpl() {
+    private ReadOnlyStringWrapper selectedTextPropertyImpl() {
         if (selectedText == null) {
             selectedText = new ReadOnlyStringWrapper(this, "selectedText", "");
         }

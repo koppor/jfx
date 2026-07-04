@@ -25,6 +25,7 @@
 
 import java.util.List;
 import javafx.application.Application;
+import javafx.beans.binding.Bindings;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.scene.Scene;
@@ -98,7 +99,7 @@ public class SelectableLabelTest extends Application {
         coloredSelection.setStyle("-fx-highlight-fill: #c2185b; -fx-highlight-text-fill: #ffee58;");
 
         Label selectedTextMonitor = new Label();
-        selectedTextMonitor.textProperty().bind(javafx.beans.binding.Bindings.format(
+        selectedTextMonitor.textProperty().bind(Bindings.format(
                 "Labeled.selectedText of the first label: '%s'", plain.selectedTextProperty()));
 
         Label notSelectable = new Label("Regular label for comparison — not selectable");
