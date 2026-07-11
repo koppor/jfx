@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -533,6 +533,51 @@ public class Parent_recomputeBounds_Test {
         assertEquals(-100 * Math.sqrt(2) / 2, b.getMinY(), 0.1);
         assertEquals(100 * Math.sqrt(2), b.getWidth(), 0.1);
         assertEquals(100 * Math.sqrt(2), b.getHeight(), 0.1);
+    }
+
+    @Test
+    public void shouldNotThrowWhenDirtyChildIsRemovedWhileBeingHidden() {
+        // JDK-8387639: Parent.updateCachedBounds threw
+        // IndexOutOfBoundsException (index -1) because dirtyChildrenCount
+        // claimed more boundsChanged children than were left in the list.
+        final Group g = new Group();
+        final Rectangle left = new Rectangle(0, 0, 10, 10);
+        final Rectangle middle = new Rectangle(20, 0, 10, 10);
+        final Rectangle right = new Rectangle(40, 0, 10, 10);
+        g.getChildren().addAll(left, middle, right);
+
+        // cache the parent's bounds; all children are clean afterwards
+        Bounds b = g.getBoundsInLocal();
+        assertEquals(50, b.getMaxX(), 0.0001);
+
+        // application-level pattern: drop a child from the scene graph as
+        // soon as it is no longer visible
+        right.boundsInParentProperty().addListener(o -> {
+            if (!right.isVisible()) {
+                g.getChildren().remove(right);
+            }
+        });
+
+        // dirty the child, so the parent counts it in dirtyChildrenCount
+        right.setWidth(30);
+
+        // revalidate the child's transformed bounds and boundsInParent
+        // without going through the parent, so that hiding the child below
+        // invalidates them once more and fires the listener
+        right.getBoundsInParent();
+
+        // Node.visibleProperty fires geomChanged before it notifies the
+        // parent via childVisibilityChanged. The boundsInParent listener
+        // therefore runs while the child is already invisible but still
+        // marked boundsChanged. The removal skips childExcluded for
+        // invisible children, so dirtyChildrenCount keeps counting a child
+        // that is no longer in the children list.
+        right.setVisible(false);
+
+        // updateCachedBounds now searches the remaining children for a
+        // boundsChanged child that is not there
+        b = g.getBoundsInLocal();
+        assertEquals(30, b.getMaxX(), 0.0001);
     }
 
     @Test
