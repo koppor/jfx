@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -663,8 +663,15 @@ public abstract non-sealed class Parent extends Node {
                     }
                     if (old.isVisible()) {
                         geomChanged = true;
-                        childExcluded(old);
                     }
+                    // Clear the bounds-tracking state (the boundsChanged
+                    // flag, dirtyChildrenCount and the edge node references)
+                    // even for an invisible child: a listener fired during
+                    // Node.visibleProperty invalidation can remove the child
+                    // after its visible flag was already cleared but before
+                    // childVisibilityChanged has run, so an invisible child
+                    // can still be marked boundsChanged here (JDK-8387639).
+                    childExcluded(old);
                     if (old.getParent() == Parent.this) {
                         old.setParent(null);
                         old.setScenes(null, null);
