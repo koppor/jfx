@@ -326,17 +326,6 @@ public non-sealed class SubScene extends Node {
                     _value.getStyleClass().add(0, "root");
                     _value.pseudoClassStateChanged(PseudoClass.getPseudoClass("root"), true);
                     _value.setScenes(getScene(), SubScene.this);
-                    // The forget(...) call above dropped the cached style data of parents
-                    // below the new root, but their style helpers still reference the
-                    // forgotten style maps. A forget must be followed by an immediate CSS
-                    // reapplication (as in userAgentStylesheetProperty); relying on the
-                    // reapplyCSS() triggered by setScenes(...) is not enough here, because a
-                    // subtree re-attached while a CSS pass is in flight already carries
-                    // REAPPLY flags whose processing slot in that pass has gone by, so
-                    // reapplyCSS() defers to the next pulse and the rest of the in-flight
-                    // pass resolves looked-up values against the forgotten maps, silently
-                    // dropping them (JDK-8268657). applyCss() honors the pending flags now.
-                    _value.applyCss();
                     markDirty(SubSceneDirtyBits.ROOT_SG_DIRTY);
                     _value.resize(getWidth(), getHeight()); // maybe no-op if root is not resizable
                     _value.requestLayout();

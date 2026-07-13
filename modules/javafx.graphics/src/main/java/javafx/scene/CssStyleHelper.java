@@ -277,12 +277,16 @@ final class CssStyleHelper {
 
     /**
      * Like {@link #findFirstStyleableAncestor}, but an ancestor whose CSS state is pending
-     * (flagged for (re)application but not yet processed) gets its style helper built on
-     * the spot. A scene-graph change from a listener fired during the CSS pass (a scene
-     * root swap, a styled pane inserted above this node) can leave such an ancestor
-     * helper-less exactly when a descendant resolves a looked-up value against it;
-     * skipping it would silently drop the lookup (JDK-8268657). The cssFlag gate is what
-     * keeps this walk cheap: a CLEAN helper-less ancestor is authoritatively unstyled and
+     * (flagged REAPPLY but not yet processed) gets its style helper rebuilt on the spot,
+     * because pending state is unreliable in two ways. The helper may not exist yet (a
+     * styled pane or new scene root inserted above this node by a listener fired during
+     * the CSS pass), or it may exist but reference style maps that StyleManager has
+     * forgotten in the meantime (a subtree re-attached mid-pass by a SubScene root swap,
+     * whose forget(subScene) drops the cached style data of parents below the new root).
+     * Trusting either would silently drop looked-up values resolved through this ancestor
+     * (JDK-8268657). Rebuilding is cheap when the helper is in fact still valid, because
+     * canReuseStyleHelper recognizes the unchanged style map. The cssFlag gate is what
+     * keeps this walk linear: a CLEAN helper-less ancestor is authoritatively unstyled and
      * is skipped on a pointer check alone, whereas building helpers for every helper-less
      * ancestor is super-linear in scene depth (JDK-8388140).
      */
@@ -290,14 +294,11 @@ final class CssStyleHelper {
         Styleable parent = st.getStyleableParent();
         while (parent != null) {
             if (parent instanceof Node parentNode) {
-                if (parentNode.styleHelper != null) {
-                    return parentNode;
-                }
                 if (parentNode.cssFlag == CssFlags.REAPPLY && parentNode.getScene() != null) {
                     parentNode.styleHelper = createStyleHelper(parentNode);
-                    if (parentNode.styleHelper != null) {
-                        return parentNode;
-                    }
+                }
+                if (parentNode.styleHelper != null) {
+                    return parentNode;
                 }
             }
             parent = parent.getStyleableParent();
