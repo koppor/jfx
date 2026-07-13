@@ -34,3 +34,15 @@ plugins {
 tasks.compileJava {
     options.release.set(null as Int?)
 }
+
+// javafx.swing has no unit tests, but its shims are used by the system tests.
+sourceSets.test {
+    java.setSrcDirs(listOf("src/shims/java"))
+}
+
+javaModuleTesting.classpath(testing.suites["test"])
+
+// only shims are compiled; there is nothing to execute
+tasks.test {
+    enabled = false
+}

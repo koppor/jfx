@@ -59,3 +59,8 @@ javaModules {
 
 include(":javafx.swt")
 project(":javafx.swt").projectDir = file("modules/javafx.swt")
+
+include(":systemTests")
+project(":systemTests").projectDir = file("tests/system")
+
+include(":apps")

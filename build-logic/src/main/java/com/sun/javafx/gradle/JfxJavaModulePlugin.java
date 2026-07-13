@@ -33,9 +33,13 @@ import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.plugins.JavaPluginExtension;
 import org.gradle.api.plugins.jvm.JvmTestSuite;
+import org.gradle.api.publish.PublishingExtension;
+import org.gradle.api.publish.maven.MavenPublication;
+import org.gradle.api.tasks.bundling.Jar;
 import org.gradle.api.tasks.compile.JavaCompile;
 import org.gradle.api.tasks.testing.Test;
 import org.gradle.jvm.toolchain.JavaLanguageVersion;
+import org.gradle.jvm.toolchain.JavaToolchainService;
 import org.gradle.testing.base.TestingExtension;
 
 /**
@@ -119,6 +123,37 @@ public abstract class JfxJavaModulePlugin implements Plugin<Project> {
             sourceSet.getJava().setSrcDirs(List.of());
             sourceSet.getResources().setSrcDirs(List.of());
         });
+
+        // API docs are built aggregated at the root ('javadoc' there); the
+        // per-module task lacks the module-source-path setup (the legacy
+        // build disables it the same way).
+        project.getTasks().named("javadoc", task -> task.setEnabled(false));
+
+        // shipped artifacts only; helper projects like systemTests do not publish
+        String artifactId = mavenArtifactId(project.getName());
+        if (artifactId != null) {
+            plugins.apply("maven-publish");
+            java.withSourcesJar();
+            var publishing = project.getExtensions().getByType(PublishingExtension.class);
+            publishing.getPublications().register("maven", MavenPublication.class, publication -> {
+                publication.setArtifactId(artifactId);
+                publication.from(project.getComponents().getByName("java"));
+            });
+        }
+
+        if (isJpmsModule) {
+            var toolchains = project.getExtensions().getByType(JavaToolchainService.class);
+            project.getTasks().register("jmod", JmodTask.class, task -> {
+                task.setGroup("build");
+                task.setDescription("Packages the module as a jmod.");
+                task.getJarFile().set(
+                        project.getTasks().named("jar", Jar.class).flatMap(Jar::getArchiveFile));
+                task.getModuleVersion().set(project.provider(() -> project.getVersion().toString()));
+                task.getLauncher().set(toolchains.launcherFor(java.getToolchain()));
+                task.getOutputFile().set(
+                        project.getLayout().getBuildDirectory().file("jmods/" + project.getName() + ".jmod"));
+            });
+        }
     }
 
     /**
@@ -134,6 +169,20 @@ public abstract class JfxJavaModulePlugin implements Plugin<Project> {
             parts.remove(parts.size() - 1);
         }
         return String.join(".", parts);
+    }
+
+    /** javafx.base -&gt; javafx-base, jfx.incubator.input -&gt; javafx-incubator-input, jdk.jsobject -&gt; javafx-jsobject. */
+    private static String mavenArtifactId(String projectName) {
+        if (projectName.startsWith("javafx.")) {
+            return "javafx-" + projectName.substring("javafx.".length());
+        }
+        if (projectName.startsWith("jfx.incubator.")) {
+            return "javafx-incubator-" + projectName.substring("jfx.incubator.".length());
+        }
+        if (projectName.equals("jdk.jsobject")) {
+            return "javafx-jsobject";
+        }
+        return null;
     }
 
     private static String stringProperty(Properties properties, String name) {

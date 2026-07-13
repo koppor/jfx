@@ -45,7 +45,7 @@ val buildTimestamp = providers.environmentVariable("SOURCE_DATE_EPOCH")
 
 val versionLong = "$version+0-$buildTimestamp"
 
-val generateVersionInfo by tasks.registering(Sync::class) {
+val generateVersionInfo = tasks.register<Sync>("generateVersionInfo") {
     description = "Fills in the version placeholders of VersionInfo.java."
     val tokens = mapOf(
         "RELEASE_VERSION_SHORT" to version.toString(),
@@ -68,7 +68,7 @@ sourceSets.main {
 }
 
 // VersionInfoTest cross-checks VersionInfo against this file.
-val generateJavafxProperties by tasks.registering(WriteProperties::class) {
+val generateJavafxProperties = tasks.register<WriteProperties>("generateJavafxProperties") {
     description = "Writes the javafx.properties file as found in an SDK."
     destinationFile = layout.buildDirectory.file("module-lib/javafx.properties")
     property("javafx.version", version.toString())

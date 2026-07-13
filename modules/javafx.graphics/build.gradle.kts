@@ -23,7 +23,9 @@
  * questions.
  */
 
+import com.sun.javafx.gradle.JmodTask
 import com.sun.javafx.gradle.JslCompileTask
+import com.sun.javafx.gradle.NativeLibTask
 
 plugins {
     id("jfx.java-module")
@@ -40,13 +42,13 @@ plugins {
 // HLSL/MSL belong to the native pipelines, which this build does not cover.
 // ---------------------------------------------------------------------------
 
-val jslc by sourceSets.creating
+val jslc = sourceSets.create("jslc")
 
 dependencies {
     "jslcImplementation"("org.antlr:antlr4:${jfxBuild.property("antlr4.version")}:complete")
 }
 
-val generateGrammarSource by tasks.registering(JavaExec::class) {
+val generateGrammarSource = tasks.register<JavaExec>("generateGrammarSource") {
     description = "Generates the JSL parser from the ANTLR grammar."
     val grammarDir = layout.projectDirectory.dir("src/jslc/antlr")
     val outputDir = layout.buildDirectory.dir("generated/sources/antlr")
@@ -86,7 +88,7 @@ fun compilerCompileTask(group: String) = tasks.register<JavaCompile>(
 val compileDecoraCompilers = compilerCompileTask("decora")
 val compilePrismCompilers = compilerCompileTask("prism")
 
-val generateDecoraShaders by tasks.registering(JslCompileTask::class) {
+val generateDecoraShaders = tasks.register<JslCompileTask>("generateDecoraShaders") {
     description = "Generates the Decora effect shaders (Java peers + GLSL)."
     compilerClasspath.from(compileDecoraCompilers, jslc.output, configurations["jslcRuntimeClasspath"],
         layout.projectDirectory.dir("src/jslc/resources"),
@@ -99,7 +101,7 @@ val generateDecoraShaders by tasks.registering(JslCompileTask::class) {
     launcher = toolchainLauncher
 }
 
-val generatePrismShaders by tasks.registering(JslCompileTask::class) {
+val generatePrismShaders = tasks.register<JslCompileTask>("generatePrismShaders") {
     description = "Generates the Prism paint shaders (Java peers + GLSL)."
     compilerClasspath.from(compilePrismCompilers, jslc.output, configurations["jslcRuntimeClasspath"],
         // PrismLoaderGlue.stg is looked up from the classpath
@@ -115,7 +117,7 @@ val generatePrismShaders by tasks.registering(JslCompileTask::class) {
 
 // The generated peers are ordinary module classes; they only need a classpath
 // compile because the sources arrive after the module itself is compiled.
-val shaders by sourceSets.creating {
+val shaders = sourceSets.create("shaders") {
     java.srcDir(generateDecoraShaders.map { it.outputDir })
     java.srcDir(generatePrismShaders.map { it.outputDir })
 }
@@ -154,13 +156,168 @@ tasks.test {
         layout.buildDirectory.dir("classes/java/main/javafx").get().asFile.path)
     // from src/test/addExports; J2DImageLoaderTest reflects into ImageIO
     jvmArgs("--add-opens", "java.desktop/javax.imageio=ALL-UNNAMED")
-    filter {
-        // need the native libraries (javafx_font, prism_common) or the print
-        // pipeline on top of them, which this build does not produce
-        excludeTestsMatching("test.com.sun.javafx.font.PrismFontFactoryTest")
-        excludeTestsMatching("test.com.sun.javafx.iio.ImageLoaderScalingTest")
-        excludeTestsMatching("test.javafx.print.JobSettingsTest")
-        excludeTestsMatching("test.javafx.print.PrinterJobTest")
-        excludeTestsMatching("test.javafx.scene.canvas.CanvasTest.testPropertyPropagation_visible")
+}
+
+// ---------------------------------------------------------------------------
+// Native libraries (Linux desktop). Flags and source lists follow the legacy
+// buildSrc/linux.gradle: everything compiles with gcc and links with g++,
+// C++ runtimes linked statically. Media and WebKit natives stay out, as in
+// the legacy build's defaults.
+// ---------------------------------------------------------------------------
+
+val mainJniHeaders = layout.buildDirectory.dir("generated/headers/main")
+tasks.compileJava {
+    options.compilerArgs.addAll(listOf("-h", mainJniHeaders.get().asFile.path))
+    outputs.dir(mainJniHeaders)
+}
+
+val shadersJniHeaders = layout.buildDirectory.dir("generated/headers/shaders")
+tasks.named<JavaCompile>("compileShadersJava") {
+    options.compilerArgs.addAll(listOf("-h", shadersJniHeaders.get().asFile.path))
+    outputs.dir(shadersJniHeaders)
+}
+
+fun pkgConfig(vararg args: String): Provider<List<String>> = providers.exec {
+    commandLine("pkg-config", *args)
+}.standardOutput.asText.map { it.trim().split(Regex("\\s+")).filter(String::isNotEmpty) }
+
+val commonNativeFlags = listOf(
+    "-fno-strict-aliasing", "-fPIC", "-fno-omit-frame-pointer", "-fstack-protector",
+    "-Wextra", "-Wall", "-Wformat-security", "-Wno-unused", "-Wno-parentheses",
+    "-Werror=trampolines")
+val cppFlags = commonNativeFlags +
+    listOf("-c", "-ffunction-sections", "-fdata-sections", "-O2", "-DNDEBUG")
+val cFlags = cppFlags + "-Werror=implicit-function-declaration"
+val dynamicLinkFlags = listOf("-static-libgcc", "-static-libstdc++", "-shared") +
+    commonNativeFlags + listOf("-z", "relro", "-Wl,--gc-sections")
+
+val jdkIncludeDirs = toolchainLauncher.map {
+    val include = it.metadata.installationPath.dir("include")
+    listOf(include, include.dir("linux"))
+}
+
+fun nativeLib(taskName: String, libFile: String, configure: NativeLibTask.() -> Unit) =
+    tasks.register<NativeLibTask>(taskName) {
+        description = "Compiles and links $libFile."
+        includeDirs.from(
+            tasks.compileJava.map { mainJniHeaders.get() },
+            tasks.named<JavaCompile>("compileShadersJava").map { shadersJniHeaders.get() },
+            jdkIncludeDirs)
+        linkFlags.addAll(dynamicLinkFlags)
+        outputFile = layout.buildDirectory.file("native/$libFile")
+        configure()
     }
+
+val nativeGlassLauncher = nativeLib("nativeGlassLauncher", "libglass.so") {
+    sources.from(fileTree("src/main/native-glass/gtk") { include("**/launcher.c") })
+    ccFlags.addAll(cppFlags + "-Werror")
+    linkFlags.addAll(listOf("-lX11", "-ldl"))
+}
+
+val nativeGlassGtk3 = nativeLib("nativeGlassGtk3", "libglassgtk3.so") {
+    sources.from(fileTree("src/main/native-glass/gtk") {
+        include("**/*.c", "**/*.cpp", "**/*.cc")
+        exclude("**/launcher.c")
+    })
+    includeDirs.from(layout.projectDirectory.dir("src/main/native-glass/gtk/libpipewire/include"))
+    ccFlags.addAll(cppFlags)
+    ccFlags.addAll(listOf(
+        "-Wno-deprecated-declarations", "-DGTK_3_MIN_MINOR_VERSION=20", "-DGTK_3_MIN_MICRO_VERSION=0"))
+    ccFlags.addAll(pkgConfig("--cflags", "gtk+-3.0", "gthread-2.0", "xtst", "gio-unix-2.0"))
+    ccFlags.add("-Werror")
+    linkFlags.addAll(pkgConfig("--libs", "gtk+-3.0", "gthread-2.0", "xtst", "gio-unix-2.0"))
+}
+
+val nativePrism = nativeLib("nativePrism", "libprism_common.so") {
+    sources.from(fileTree("src/main/native-prism") { include("*.c") })
+    includeDirs.from(layout.projectDirectory.dir("src/main/native-prism"))
+    ccFlags.addAll(cFlags + "-DINLINE=inline")
+}
+
+val nativePrismSw = nativeLib("nativePrismSw", "libprism_sw.so") {
+    sources.from(fileTree("src/main/native-prism-sw") { include("*.c") })
+    includeDirs.from(layout.projectDirectory.dir("src/main/native-prism-sw"))
+    ccFlags.addAll(cFlags + "-DINLINE=inline")
+}
+
+val nativePrismEs2 = nativeLib("nativePrismEs2", "libprism_es2.so") {
+    sources.from(
+        fileTree("src/main/native-prism-es2") { include("*.c") },
+        fileTree("src/main/native-prism-es2/x11") { include("*.c") })
+    includeDirs.from(
+        layout.projectDirectory.dir("src/main/native-prism-es2"),
+        layout.projectDirectory.dir("src/main/native-prism-es2/GL"),
+        layout.projectDirectory.dir("src/main/native-prism-es2/x11"))
+    ccFlags.addAll(listOf("-DLINUX") + cFlags)
+    linkFlags.addAll(listOf("-lX11", "-lXxf86vm", "-lGL"))
+}
+
+val nativeFont = nativeLib("nativeFont", "libjavafx_font.so") {
+    sources.from(fileTree("src/main/native-font") { include("*.c", "*.cpp") })
+    includeDirs.from(layout.projectDirectory.dir("src/main/native-font"))
+    ccFlags.addAll(listOf("-DJFXFONT_PLUS") + cppFlags)
+}
+
+val nativeFontFreetype = nativeLib("nativeFontFreetype", "libjavafx_font_freetype.so") {
+    sources.from(layout.projectDirectory.file("src/main/native-font/freetype.c"))
+    includeDirs.from(layout.projectDirectory.dir("src/main/native-font"))
+    ccFlags.addAll(listOf("-DJFXFONT_PLUS") + cFlags + "-D_ENABLE_PANGO")
+    ccFlags.addAll(pkgConfig("--cflags", "freetype2"))
+    linkFlags.addAll(pkgConfig("--libs", "freetype2"))
+}
+
+val nativeFontPango = nativeLib("nativeFontPango", "libjavafx_font_pango.so") {
+    sources.from(layout.projectDirectory.file("src/main/native-font/pango.c"))
+    includeDirs.from(layout.projectDirectory.dir("src/main/native-font"))
+    ccFlags.addAll(listOf("-DJFXFONT_PLUS") + cFlags + "-D_ENABLE_PANGO")
+    ccFlags.addAll(pkgConfig("--cflags", "pangoft2"))
+    linkFlags.addAll(pkgConfig("--libs", "pangoft2"))
+}
+
+val nativeIio = nativeLib("nativeIio", "libjavafx_iio.so") {
+    sources.from(
+        fileTree("src/main/native-iio") { include("*.c") },
+        fileTree("src/main/native-iio/libjpeg") { include("*.c") })
+    includeDirs.from(
+        layout.projectDirectory.dir("src/main/native-iio"),
+        layout.projectDirectory.dir("src/main/native-iio/libjpeg"))
+    ccFlags.addAll(cFlags + "-fvisibility=hidden")
+}
+
+val nativeDecora = nativeLib("nativeDecora", "libdecora_sse.so") {
+    sources.from(
+        generateDecoraShaders.flatMap { it.outputDir }
+            .map { it.asFileTree.matching { include("**/*.cc") } },
+        fileTree("src/main/native-decora") { include("*.cc") })
+    includeDirs.from(
+        generateDecoraShaders.flatMap { it.outputDir },
+        layout.projectDirectory.dir("src/main/native-decora"))
+    ccFlags.addAll(cppFlags + "-ffast-math")
+}
+
+val collectNativeLibs = tasks.register<Sync>("collectNativeLibs") {
+    description = "Collects all native libraries into build/natives."
+    listOf(
+        nativeGlassLauncher, nativeGlassGtk3, nativePrism, nativePrismSw, nativePrismEs2,
+        nativeFont, nativeFontFreetype, nativeFontPango, nativeIio, nativeDecora,
+    ).forEach { from(it) }
+    into(layout.buildDirectory.dir("natives"))
+}
+
+tasks.assemble {
+    dependsOn(collectNativeLibs)
+}
+
+// downstream consumers: the root SDK image and this module's jmod
+configurations.consumable("nativeLibs")
+artifacts.add("nativeLibs", collectNativeLibs.map { it.destinationDir })
+
+tasks.named<JmodTask>("jmod") {
+    nativeLibsDir = layout.dir(collectNativeLibs.map { it.destinationDir })
+}
+
+// fonts, image loading, and printing tests load the native libraries
+tasks.test {
+    dependsOn(collectNativeLibs)
+    systemProperty("java.library.path", layout.buildDirectory.dir("natives").get().asFile.path)
 }

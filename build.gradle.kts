@@ -30,6 +30,18 @@
 
 plugins {
     base
+    id("jvm-toolchains")
+}
+
+// The JPMS modules; javafx.swt additionally ships as a plain jar.
+val jfxModules = listOf(
+    "javafx.base", "javafx.graphics", "javafx.controls", "javafx.fxml",
+    "javafx.media", "javafx.swing", "javafx.web", "jdk.jsobject",
+    "jfx.incubator.input", "jfx.incubator.richtext",
+)
+
+val buildProperties = java.util.Properties().apply {
+    file("build.properties").reader().use { load(it) }
 }
 
 val sdkModules = configurations.dependencyScope("sdkModules")
@@ -43,17 +55,25 @@ val sdkModulePath = configurations.resolvable("sdkModulePath") {
 }
 
 dependencies {
-    listOf(
-        "javafx.base", "javafx.graphics", "javafx.controls", "javafx.fxml",
-        "javafx.media", "javafx.swing", "javafx.swt", "javafx.web",
-        "jdk.jsobject", "jfx.incubator.input", "jfx.incubator.richtext",
-    ).forEach { add(sdkModules.name, project(":$it")) }
+    (jfxModules + "javafx.swt").forEach { add(sdkModules.name, project(":$it")) }
 }
 
-val sdk by tasks.registering(Sync::class) {
+val graphicsNatives = configurations.dependencyScope("graphicsNatives")
+
+val graphicsNativesPath = configurations.resolvable("graphicsNativesPath") {
+    extendsFrom(graphicsNatives.get())
+}
+
+dependencies {
+    add(graphicsNatives.name,
+        project(mapOf("path" to ":javafx.graphics", "configuration" to "nativeLibs")))
+}
+
+val sdk = tasks.register<Sync>("sdk") {
     group = "build"
-    description = "Copies all JavaFX module jars into build/sdk/lib."
+    description = "Copies all JavaFX module jars and native libraries into build/sdk/lib."
     from(sdkModulePath)
+    from(graphicsNativesPath)
     into(layout.buildDirectory.dir("sdk/lib"))
     // javafx.base-27-internal.jar -> javafx.base.jar
     rename("(.+)-\\d.*\\.jar", "$1.jar")
@@ -61,4 +81,49 @@ val sdk by tasks.registering(Sync::class) {
 
 tasks.assemble {
     dependsOn(sdk)
+}
+
+val jmods = tasks.register<Sync>("jmods") {
+    group = "build"
+    description = "Collects the jmods of all modules into build/jmods."
+    into(layout.buildDirectory.dir("jmods"))
+    jfxModules.forEach {
+        from("modules/$it/build/jmods")
+        dependsOn(":$it:jmod")
+    }
+}
+
+val javadoc = tasks.register<Javadoc>("javadoc") {
+    group = "documentation"
+    description = "Generates the aggregated JavaFX API documentation."
+    // VersionInfo.java is generated and referenced from javafx.base internals
+    dependsOn(":javafx.base:generateVersionInfo")
+    setDestinationDir(layout.buildDirectory.dir("javadoc").get().asFile)
+    // Only the public API packages are documented; internals are picked up
+    // for resolution through the module source path.
+    jfxModules.forEach { m ->
+        source(fileTree("modules/$m/src/main/java") {
+            include("javafx/**/*.java", "jfx/incubator/**/*.java", "netscape/**/*.java", "module-info.java")
+        })
+    }
+    classpath = files()
+    javadocTool = javaToolchains.javadocToolFor {
+        languageVersion = JavaLanguageVersion.of(
+            buildProperties.getProperty("jfx.build.jdk.version.min").trim().toInt())
+    }
+    (options as StandardJavadocDocletOptions).apply {
+        encoding = "UTF-8"
+        windowTitle = "JavaFX API"
+        addStringOption(
+            "-module-source-path",
+            listOf(
+                "$projectDir/modules/*/src/main/java",
+                "$projectDir/modules/*/build/generated/sources/version-info",
+            ).joinToString(File.pathSeparator))
+        // the legacy build uses a curated doclint set; this build documents
+        // as-is and leaves lint to upstream
+        addBooleanOption("Xdoclint:none", true)
+        links("https://docs.oracle.com/en/java/javase/"
+            + buildProperties.getProperty("jdk.docs.version").trim() + "/docs/api/")
+    }
 }

@@ -27,6 +27,21 @@ plugins {
     id("jfx.java-module")
 }
 
+// The web unit tests need the WebKit native build and are skipped (as in
+// upstream CI), but the shims are compiled: the system tests use them. The
+// DOM shims reference WebKit-generated binding classes, so they stay out.
+sourceSets.test {
+    java.setSrcDirs(listOf("src/shims/java"))
+    java.exclude("com/sun/webkit/dom/**")
+}
+
+javaModuleTesting.classpath(testing.suites["test"])
+
+// only shims are compiled; there is nothing to execute
+tasks.test {
+    enabled = false
+}
+
 // The java-module-dependencies plugin ignores 'requires jdk.jsobject' because
 // it considers that module JDK-provided. This repository ships its own
 // jdk.jsobject (the JDK's copy is deprecated for removal), so it is wired up
