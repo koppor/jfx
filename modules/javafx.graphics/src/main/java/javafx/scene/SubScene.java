@@ -326,6 +326,16 @@ public non-sealed class SubScene extends Node {
                     _value.getStyleClass().add(0, "root");
                     _value.pseudoClassStateChanged(PseudoClass.getPseudoClass("root"), true);
                     _value.setScenes(getScene(), SubScene.this);
+                    // The forget(...) call above dropped this SubScene's cached style data,
+                    // so style helpers below the new root still reference the forgotten style
+                    // maps. If the swap happens while a CSS pass is in flight (e.g. from a
+                    // listener fired during that pass), deferring the rebuild to the next pulse
+                    // leaves the rest of the in-flight pass resolving looked-up values against
+                    // those forgotten maps, silently dropping them (JDK-8268657). Reset the flag
+                    // so reapplyCSS() takes its eager path instead of deferring at the
+                    // UPDATE/DIRTY_BRANCH guards.
+                    _value.cssFlag = CssFlags.CLEAN;
+                    _value.reapplyCSS();
                     markDirty(SubSceneDirtyBits.ROOT_SG_DIRTY);
                     _value.resize(getWidth(), getHeight()); // maybe no-op if root is not resizable
                     _value.requestLayout();
