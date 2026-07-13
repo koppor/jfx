@@ -45,8 +45,8 @@ val sdkModulePath = configurations.resolvable("sdkModulePath") {
 dependencies {
     listOf(
         "javafx.base", "javafx.graphics", "javafx.controls", "javafx.fxml",
-        "javafx.media", "javafx.swing", "javafx.web", "jdk.jsobject",
-        "jfx.incubator.input", "jfx.incubator.richtext",
+        "javafx.media", "javafx.swing", "javafx.swt", "javafx.web",
+        "jdk.jsobject", "jfx.incubator.input", "jfx.incubator.richtext",
     ).forEach { add(sdkModules.name, project(":$it")) }
 }
 

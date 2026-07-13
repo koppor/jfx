@@ -23,12 +23,24 @@
  * questions.
  */
 
+// The convention plugin is written in plain Java (src/main/java), so this
+// build needs no Kotlin compilation.
+
 plugins {
-    `kotlin-dsl`
+    `java-gradle-plugin`
 }
 
 dependencies {
     implementation("org.gradlex:java-module-dependencies:1.13.1")
     implementation("org.gradlex:java-module-testing:1.8.1")
     implementation("org.gradlex:reproducible-builds:1.1")
+}
+
+gradlePlugin {
+    plugins {
+        register("jfxJavaModule") {
+            id = "jfx.java-module"
+            implementationClass = "com.sun.javafx.gradle.JfxJavaModulePlugin"
+        }
+    }
 }

@@ -51,7 +51,11 @@ javaModules {
     directory("modules") {
         group = "org.openjfx"
         plugin("jfx.java-module")
-        // javafx.swt is not a JPMS module and needs an external SWT jar.
+        // javafx.swt is not a JPMS module; it is included as a plain
+        // subproject below.
         exclusions.add("javafx\\.swt")
     }
 }
+
+include(":javafx.swt")
+project(":javafx.swt").projectDir = file("modules/javafx.swt")
