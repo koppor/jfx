@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -23,32 +23,12 @@
  * questions.
  */
 
-import org.gradle.process.ExecOperations
+plugins {
+    `kotlin-dsl`
+}
 
-import javax.inject.Inject
-
-class CompileMSLTask extends NativeCompileTask {
-    @Inject
-    CompileMSLTask(ExecOperations execOperations) {
-        super(execOperations);
-    }
-
-    protected File outputFile(File sourceFile) {
-        new File("$output/${sourceFile.name.replace('.metal', '.air')}");
-    }
-
-    protected void doCompile(File sourceFile, File outputFile){
-        def headerDir = 'gensrc/mtl-headers';
-        def includeDir = "$project.buildDir/$headerDir";
-        execCompile { spec ->
-            spec.commandLine = [
-                "${project.metalCompiler}",
-                "-Wdeprecated",
-                "-std=macos-metal2.4",
-                "-I", "$includeDir",
-                "-c", "$sourceFile",
-                "-o", "$outputFile"
-            ]
-        }
-    }
+dependencies {
+    implementation("org.gradlex:java-module-dependencies:1.13.1")
+    implementation("org.gradlex:java-module-testing:1.8.1")
+    implementation("org.gradlex:reproducible-builds:1.1")
 }

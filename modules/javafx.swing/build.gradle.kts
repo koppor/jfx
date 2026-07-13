@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -23,31 +23,14 @@
  * questions.
  */
 
-import org.gradle.api.tasks.Input
-import org.gradle.process.ExecOperations
+plugins {
+    id("jfx.java-module")
+}
 
-import javax.inject.Inject
-
-class CompileResourceTask extends NativeCompileTask {
-    @Input List<String> rcParams = new ArrayList<String>();
-    @Input String compiler;
-
-    @Inject
-    CompileResourceTask(ExecOperations execOperations) {
-        super(execOperations);
-    }
-
-    protected File outputFile(File sourceFile) {
-        final String outFileName = sourceFile.getName().substring(0, sourceFile.getName().lastIndexOf("."));
-        return new File("$output/${outFileName}.res");
-    }
-
-    protected void doCompile(File sourceFile, File outputFile){
-        execCompile { spec ->
-            spec.commandLine(compiler);
-            if (rcParams) spec.args(rcParams);
-            spec.args("/Fo$outputFile", "$sourceFile");
-            spec.environment(project.WINDOWS_NATIVE_COMPILE_ENVIRONMENT);
-        }
-    }
+// javafx.swing requires jdk.unsupported.desktop, which is filtered out of the
+// system-modules view that "--release" compiles against. Compiling against the
+// toolchain's full module set is safe because the toolchain is pinned to the
+// same version anyway.
+tasks.compileJava {
+    options.release.set(null as Int?)
 }

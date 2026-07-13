@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -23,30 +23,35 @@
  * questions.
  */
 
-import org.gradle.process.ExecOperations
+pluginManagement {
+    includeBuild("build-logic")
+}
 
-import javax.inject.Inject
+plugins {
+    id("org.gradlex.java-module-dependencies") version "1.13.1"
+    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
+    // Put the convention plugin from 'build-logic' on the build classpath so
+    // that the javaModules block below can apply it to the module projects.
+    id("jfx.java-module") apply false
+}
 
-class CompileHLSLTask extends NativeCompileTask {
-    @Inject
-    CompileHLSLTask(ExecOperations execOperations) {
-        super(execOperations);
+rootProject.name = "jfx"
+
+dependencyResolutionManagement {
+    repositories {
+        mavenCentral()
     }
+}
 
-    protected File outputFile(File sourceFile) {
-        new File("$output/${sourceFile.name.replace('.hlsl', '.obj')}");
-    }
-
-    protected void doCompile(File sourceFile, File outputFile){
-        execCompile { spec ->
-            spec.commandLine = [
-                "$project.FXC",
-                "/nologo",
-                "/T", "ps_3_0",
-                "/Fo", "$outputFile",
-                "$sourceFile"
-            ]
-            spec.environment(project.WINDOWS_NATIVE_COMPILE_ENVIRONMENT);
-        }
+// Every directory below 'modules/' that contains a module-info.java becomes a
+// subproject named after the directory. Dependencies between the modules are
+// derived from the 'requires' directives in the module-info.java files, so the
+// build scripts contain no dependency declarations for them.
+javaModules {
+    directory("modules") {
+        group = "org.openjfx"
+        plugin("jfx.java-module")
+        // javafx.swt is not a JPMS module and needs an external SWT jar.
+        exclusions.add("javafx\\.swt")
     }
 }
