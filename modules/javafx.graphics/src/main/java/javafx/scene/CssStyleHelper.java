@@ -87,15 +87,6 @@ final class CssStyleHelper {
      * Creates a new StyleHelper.
      */
     static CssStyleHelper createStyleHelper(final Node node) {
-        boolean userSetFont;
-        if (node.styleHelper == null) {
-            // Node styleHelper can not be reused later, because it does not exist.
-            // We can therefore safely set this true and ignore the property for the rest of this method.
-            userSetFont = true;
-        } else {
-            userSetFont = isUserSetFont(node);
-        }
-
         Node styleableAncestor = null;
         Styleable parent = node;
         int depth = 0;
@@ -103,13 +94,8 @@ final class CssStyleHelper {
             depth++;
             parent = parent.getStyleableParent();
 
-            if (parent instanceof Node parentNode) {
-                if (styleableAncestor == null && parentNode.styleHelper != null) {
-                    styleableAncestor = parentNode;
-                }
-                if (!userSetFont) {
-                    userSetFont = isUserSetFont(parentNode);
-                }
+            if (styleableAncestor == null && parent instanceof Node parentNode && parentNode.styleHelper != null) {
+                styleableAncestor = parentNode;
             }
         }
 
@@ -141,7 +127,7 @@ final class CssStyleHelper {
             // trigger a REAPPLY. If the REAPPLY comes because of a change in font, then the fontSizeCache
             // needs to be invalidated (cleared) so that new values will be looked up for all transition states.
             //
-            if (userSetFont) {
+            if (!node.styleHelper.cacheContainer.fontSizeCache.isEmpty() && isUserSetFontAnywhere(node)) {
                 node.styleHelper.cacheContainer.fontSizeCache.clear();
             }
             node.styleHelper.cacheContainer.forceSlowpath = true;
@@ -250,6 +236,22 @@ final class CssStyleHelper {
             if (fontStyleableProperty != null && fontStyleableProperty.getStyleOrigin() == StyleOrigin.USER) {
                 return true;
             }
+        }
+        return false;
+    }
+
+    /**
+     * Returns whether the font of the given node or of any of its styleable ancestors
+     * was set by the user, e.g. via {@code setFont}. In that case, cached font sizes
+     * derived from the inherited font may be stale.
+     */
+    private static boolean isUserSetFontAnywhere(Node node) {
+        Styleable styleable = node;
+        while (styleable != null) {
+            if (styleable instanceof Node styleableNode && isUserSetFont(styleableNode)) {
+                return true;
+            }
+            styleable = styleable.getStyleableParent();
         }
         return false;
     }
