@@ -65,6 +65,7 @@ import com.sun.javafx.css.StyleCacheEntry;
 import com.sun.javafx.css.StyleManager;
 import com.sun.javafx.css.StyleMap;
 import com.sun.javafx.css.TransitionDefinitionCssMetaData;
+import com.sun.javafx.scene.CssFlags;
 import com.sun.javafx.util.Logging;
 import com.sun.javafx.util.Utils;
 
@@ -274,6 +275,38 @@ final class CssStyleHelper {
         return ancestor;
     }
 
+    /**
+     * Like {@link #findFirstStyleableAncestor}, but an ancestor whose CSS state is pending
+     * (flagged REAPPLY but not yet processed) gets its style helper rebuilt on the spot,
+     * because pending state is unreliable in two ways. The helper may not exist yet (a
+     * styled pane or new scene root inserted above this node by a listener fired during
+     * the CSS pass), or it may exist but reference style maps that StyleManager has
+     * forgotten in the meantime (a subtree re-attached mid-pass by a SubScene root swap,
+     * whose forget(subScene) drops the cached style data of parents below the new root).
+     * Trusting either would silently drop looked-up values resolved through this ancestor
+     * (JDK-8268657). Rebuilding is cheap when the helper is in fact still valid, because
+     * canReuseStyleHelper recognizes the unchanged style map. The cssFlag gate is what
+     * keeps this walk linear: a CLEAN helper-less ancestor is authoritatively unstyled and
+     * is skipped on a pointer check alone, whereas building helpers for every helper-less
+     * ancestor is super-linear in scene depth (JDK-8388140).
+     */
+    private static Node findFirstStyleableAncestorForResolve(Styleable st) {
+        Styleable parent = st.getStyleableParent();
+        while (parent != null) {
+            if (parent instanceof Node parentNode) {
+                if (parentNode.cssFlag == CssFlags.REAPPLY && parentNode.getScene() != null) {
+                    parentNode.styleHelper = createStyleHelper(parentNode);
+                }
+                if (parentNode.styleHelper != null) {
+                    return parentNode;
+                }
+            }
+            parent = parent.getStyleableParent();
+        }
+
+        return null;
+    }
+
     //
     // return the value of the property
     //
@@ -365,7 +398,9 @@ final class CssStyleHelper {
 
     /* This is the first Styleable parent (of Node this StyleHelper belongs to)
      * having a valid StyleHelper */
-    private WeakReference<Node> firstStyleableAncestor = EMPTY_NODE;
+    // Package-private (not private) so CssStyleHelperShim can force it stale in the
+    // JDK-8268657 regression test; see CssStyleHelperShim.clearCachedFirstStyleableAncestor.
+    WeakReference<Node> firstStyleableAncestor = EMPTY_NODE;
 
     private CacheContainer cacheContainer;
 
@@ -1326,7 +1361,10 @@ final class CssStyleHelper {
             final Styleable styleable,
             final String property) {
 
-        Styleable parent = ((Node)styleable).styleHelper.firstStyleableAncestor.get();
+        // JDK-8268657: walk the live styleable parent chain rather than the cached
+        // firstStyleableAncestor weak reference, which can be transiently empty/stale
+        // during a stylesheet swap and would otherwise drop the inherited value.
+        Styleable parent = findFirstStyleableAncestorForResolve(styleable);
         CssStyleHelper parentStyleHelper = getStyleHelper((Node) parent);
 
         if (parent != null && parentStyleHelper != null) {
@@ -1371,7 +1409,15 @@ final class CssStyleHelper {
             } else {
                 // TODO: This block was copied from inherit. Both should use same code somehow.
 
-                Styleable styleableParent = ((Node)styleable).styleHelper.firstStyleableAncestor.get();
+                // JDK-8268657: do not trust the cached firstStyleableAncestor weak
+                // reference here. During a stylesheet swap (clear()+add()) the parent's
+                // style helper may be rebuilt after the child resolves, leaving the
+                // cached reference transiently empty/stale. Resolving against a null
+                // helper drops the looked-up color, so the raw String reaches the Paint
+                // converter and throws ClassCastException. Walk the live styleable parent
+                // chain instead, building helpers for CSS-pending ancestors on the way,
+                // so we always find the nearest ancestor that carries styles.
+                Styleable styleableParent = findFirstStyleableAncestorForResolve(styleable);
                 CssStyleHelper parentStyleHelper = getStyleHelper((Node) styleableParent);
 
                 if (styleableParent == null || parentStyleHelper == null) {

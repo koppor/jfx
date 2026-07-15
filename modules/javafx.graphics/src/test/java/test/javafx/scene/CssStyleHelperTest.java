@@ -29,6 +29,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.sun.javafx.css.StyleManager;
 import com.sun.javafx.tk.Toolkit;
@@ -39,6 +40,7 @@ import javafx.css.CssParser.ParseError.PropertySetError;
 import javafx.css.PseudoClass;
 import javafx.css.Stylesheet;
 import javafx.geometry.Insets;
+import javafx.scene.CssStyleHelperShim;
 import javafx.scene.Scene;
 import javafx.scene.layout.Background;
 import javafx.scene.layout.Pane;
@@ -50,6 +52,8 @@ import javafx.stage.Stage;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -965,7 +969,273 @@ public class CssStyleHelperTest {
         assertEquals(List.of(1.0, 2.0, 1.5, 1.0), trace);
     }
 
+    /**
+     * PseudoClass should correctly pass down even if there are intermediate unstyled panes inbetween.
+     */
+    @Test
+    void testLookupResolvesWithPseudoClassAndIntermediatePane() {
+        var errors = CssParser.errorsProperty();
+        errors.clear();
+
+        String theme = toDataURL("""
+                .root { -my-color: #0000FF; }
+                .pseudo:ps1 .leaf { -fx-background-color: -my-color; }
+                """);
+
+        StackPane leaf = new StackPane();
+        leaf.getStyleClass().add("leaf");
+        StackPane intermediate = new StackPane(leaf);
+
+        StackPane pseudo = new StackPane(intermediate);
+        pseudo.getStyleClass().add("pseudo");
+        pseudo.pseudoClassStateChanged(PseudoClass.getPseudoClass("ps1"), true);
+
+        StackPane root = new StackPane(pseudo);
+
+        Scene scene = new Scene(root);
+        scene.getStylesheets().add(theme);
+
+        scene.getRoot().applyCss();
+
+        assertEquals(0, errors.size(), errors::toString);
+        assertEquals(Color.BLUE, leaf.getBackground().getFills().getFirst().getFill());
+    }
+
+    /**
+     * The stylesheet uses '.root' styleClass but is not on the root node results in the following css error:
+     * {@code Caught 'java.lang.ClassCastException: class java.lang.String cannot be cast to class javafx.scene.paint.Paint
+     * while converting value for '-fx-background-color'.}
+     */
+    @Test
+    void testColorLookupClassCastExceptionWhenStylesheetNotOnRoot() {
+        var errors = CssParser.errorsProperty();
+        errors.clear();
+
+        String themeA = toDataURL("""
+                .root { -theme-button: #0000FF; }
+                .leaf { -fx-background-color: -theme-button; }
+                """);
+
+        StackPane sub = new StackPane();
+        sub.getStylesheets().add(themeA);
+
+        Pane leaf = new Pane();
+        leaf.getStyleClass().add("leaf");
+        sub.getChildren().add(leaf);
+
+        StackPane root = new StackPane(sub);
+        Scene _ = new Scene(root);
+        root.applyCss();
+
+        assertEquals(1, errors.size(), errors::toString);
+
+        assertNull(leaf.getBackground());
+    }
+
+    /**
+     * The stylesheet was correctly on the root node with the styleClass '.root' but will be reparented
+     * to a new root node results in the following css error:
+     * {@code Caught 'java.lang.ClassCastException: class java.lang.String cannot be cast to class javafx.scene.paint.Paint
+     * while converting value for '-fx-background-color'.}
+     */
+    @Test
+    void testColorLookupClassCastExceptionAfterNewRootSwap() {
+        var errors = CssParser.errorsProperty();
+        errors.clear();
+
+        String themeA = toDataURL("""
+                .root { -theme-button: #0000FF; }
+                .leaf { -fx-background-color: -theme-button; }
+                """);
+
+        StackPane root = new StackPane();
+        root.getStylesheets().add(themeA);
+
+        Pane leaf = new Pane();
+        leaf.getStyleClass().add("leaf");
+        root.getChildren().add(leaf);
+
+        Scene scene = new Scene(root);
+        root.applyCss();
+
+        assertEquals(Color.BLUE, leaf.getBackground().getFills().getFirst().getFill());
+
+        root = new StackPane(root);
+        scene.setRoot(root);
+        root.applyCss();
+
+        assertEquals(1, errors.size(), errors::toString);
+
+        assertNull(leaf.getBackground());
+    }
+
+    /**
+     * No errors when we switch the root node in a listener of the root node (which is triggered by a CSS pulse).
+     */
+    @Test
+    void testLookupResolvesAfterRootTransitionToStateRootSwap() {
+        var errors = CssParser.errorsProperty();
+        errors.clear();
+
+        String theme = toDataURL("""
+                .root {
+                    -jr-fg: #0000FF;
+                    -fx-background-color: -jr-fg;
+                }
+                .leaf {
+                    -fx-background-color: -jr-fg;
+                }
+                """);
+
+        StackPane oldRoot = new StackPane();
+
+        StackPane leaf = new StackPane();
+        leaf.getStyleClass().add("leaf");
+        oldRoot.getChildren().add(leaf);
+
+        Scene scene = new Scene(oldRoot);
+        scene.getStylesheets().add(theme);
+
+        // When CSS applies -fx-background-color to oldRoot, we are in the transitionToState phase (mid-pulse).
+        AtomicBoolean swapped = new AtomicBoolean(false);
+        oldRoot.backgroundProperty().addListener((_, _, _) -> {
+            if (!swapped.getAndSet(true)) {
+                StackPane newRoot = new StackPane(oldRoot);
+                scene.setRoot(newRoot);
+            }
+        });
+
+        scene.getRoot().applyCss();
+
+        assertEquals(0, errors.size(), errors::toString);
+
+        assertEquals(Color.BLUE, leaf.getBackground().getFills().getFirst().getFill());
+    }
+
+    /**
+     * No errors when we switch the root node in a listener of a child node (which is triggered by a CSS pulse).
+     */
+    @Test
+    void testLookupResolvesAfterChildTransitionToStateRootSwap() {
+        var errors = CssParser.errorsProperty();
+        errors.clear();
+
+        String theme = toDataURL("""
+                .root {
+                    -jr-fg: #0000FF;
+                }
+                .leaf {
+                    -fx-background-color: -jr-fg;
+                }
+                .leaf-leaf {
+                    -fx-background-color: -jr-fg;
+                }
+                """);
+
+        StackPane oldRoot = new StackPane();
+
+        StackPane leafLeaf = new StackPane();
+        leafLeaf.getStyleClass().add("leaf-leaf");
+        StackPane leaf = new StackPane(leafLeaf);
+        leaf.getStyleClass().add("leaf");
+        oldRoot.getChildren().add(leaf);
+
+        Scene scene = new Scene(oldRoot);
+        scene.getStylesheets().add(theme);
+
+        // When CSS applies -fx-background-color to leaf, we are in the transitionToState phase (mid-pulse).
+        AtomicBoolean swapped = new AtomicBoolean(false);
+        leaf.backgroundProperty().addListener((_, _, _) -> {
+            if (!swapped.getAndSet(true)) {
+                StackPane newRoot = new StackPane(oldRoot);
+                scene.setRoot(newRoot);
+            }
+        });
+
+        scene.getRoot().applyCss();
+
+        assertEquals(0, errors.size(), errors::toString);
+
+        assertEquals(Color.BLUE, leaf.getBackground().getFills().getFirst().getFill());
+    }
+
     private static String toDataURL(String stylesheet) {
         return "data:text/plain;base64," + Base64.getEncoder().encodeToString(stylesheet.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * JDK-8268657: a descendant that references an ancestor-defined looked-up color
+     * ({@code -fx-background-color: -theme-button}) must keep resolving the color even
+     * when the descendant's cached {@code firstStyleableAncestor} weak reference is
+     * transiently empty.
+     *
+     * <p>On Linux/Wayland, swapping a stylesheet via {@code getStylesheets().clear()}
+     * followed by {@code add()} can interleave CSS processing so that a descendant's
+     * style helper is (re)built while its ancestor momentarily has no style helper,
+     * leaving the descendant's cached ancestor reference empty. When the descendant
+     * then resolves the looked-up color, the buggy code trusted that empty cached
+     * reference, found no ancestor style helper, and dropped the lookup. The raw token
+     * string ({@code "-theme-button"}) then reached the Paint converter, which threw
+     * {@code ClassCastException: String cannot be cast to Paint}, and the background
+     * silently lost its fill.</p>
+     *
+     * <p>This race cannot be hit through a single deterministic {@code firePulse()}
+     * (which processes the scene graph strictly top-down, so an ancestor's helper is
+     * always rebuilt before its descendants resolve). The test therefore reproduces the
+     * stale state directly: it settles the tree, empties the descendant's cached
+     * ancestor reference, then re-resolves the looked-up color through an UPDATE-only
+     * CSS pass (a pseudo-class transition reuses the existing style helper instead of
+     * rebuilding it, so the stale cached reference is actually consulted).</p>
+     *
+     * <p>The fix makes {@code resolveRef}/{@code getInheritedStyle} walk the live
+     * styleable parent chain instead of trusting the cached reference, so the color
+     * still resolves. Before the fix, the fill is dropped and this test fails.</p>
+     */
+    @Test
+    public void lookedUpColorResolvesAcrossStaleFirstStyleableAncestor() throws IOException {
+        root.getStyleClass().add("root");
+
+        // The ":hover" rule gives the leaf a pseudo-class trigger, which lets us force
+        // an UPDATE-only CSS pass (transitionToState on the existing helper) that
+        // re-resolves the looked-up color without rebuilding the leaf's style helper.
+        Stylesheet stylesheet = new CssParser().parse(
+                "lookedUpColorResolvesAcrossStaleFirstStyleableAncestor",
+                ".root { -theme-button: #0000ff; }\n"
+                + ".leaf { -fx-background-color: -theme-button; }\n"
+                + ".leaf:hover { -fx-background-color: -theme-button; }\n");
+        StyleManager.getInstance().setDefaultUserAgentStylesheet(stylesheet);
+
+        Pane leaf = new Pane();
+        leaf.getStyleClass().add("leaf");
+        root.getChildren().add(leaf);
+
+        stage.show();
+        Toolkit.getToolkit().firePulse();
+
+        // Sanity: the looked-up color resolves through the correctly cached ancestor.
+        assertEquals(Color.BLUE, leaf.backgroundProperty().getValue().getFills().get(0).getFill());
+        assertEquals(root, CssStyleHelperShim.getCachedFirstStyleableAncestor(leaf));
+
+        // Reproduce the transient state seen during a Wayland stylesheet swap: the
+        // leaf's cached ancestor reference goes empty.
+        CssStyleHelperShim.clearCachedFirstStyleableAncestor(leaf);
+        assertNull(CssStyleHelperShim.getCachedFirstStyleableAncestor(leaf));
+
+        // Re-resolve the looked-up color via an UPDATE-only pass. The pseudo-class
+        // transition reuses the existing (stale) style helper rather than rebuilding
+        // it, so resolveRef consults the now-empty cached ancestor reference.
+        leaf.pseudoClassStateChanged(PseudoClass.getPseudoClass("hover"), true);
+        Toolkit.getToolkit().firePulse();
+
+        // With the fix, resolveRef walks the live parent chain, finds root, and the
+        // looked-up color still resolves. Without the fix, the cached-empty ancestor
+        // drops the lookup and the fill is lost (ClassCastException String -> Paint).
+        Background background = leaf.backgroundProperty().getValue();
+        assertNotNull(background,
+                "background was dropped because the looked-up color failed to resolve "
+                        + "through a stale firstStyleableAncestor (JDK-8268657)");
+        assertFalse(background.getFills().isEmpty(),
+                "looked-up color was dropped because of a stale firstStyleableAncestor (JDK-8268657)");
+        assertEquals(Color.BLUE, background.getFills().get(0).getFill());
     }
 }
