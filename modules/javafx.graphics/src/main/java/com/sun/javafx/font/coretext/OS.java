@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -44,6 +44,8 @@ class OS {
     static final int kCGImageAlphaPremultipliedFirst = 2;
     static final int kCGImageAlphaNone = 0;
     static final int kCTWritingDirectionRightToLeft = 1;
+    static final int kCTFontTraitItalic = 1 << 0;
+    static final int kCTFontTraitBold = 1 << 1;
 
     static final long CFStringCreate(String string) {
         char[] buffer = string.toCharArray();
@@ -102,8 +104,9 @@ class OS {
     static final native long CTFontCreatePathForGlyph(long font, short glyph, CGAffineTransform matrix);
     static final native long CTFontCreateCopyWithAttributes(long cgFont, double size, CGAffineTransform matrix, long attributes);
     static final native long CTFontCreateWithGraphicsFont(long cgFont, double size, CGAffineTransform matrix, long attributes);
-    static final native long CTFontCreateUIFontForLanguage(double size, CGAffineTransform matrix, boolean bold);
+    static final native long CTFontCreateUIFontForLanguage(double size, CGAffineTransform matrix, boolean bold, boolean italic);
     static final native long CTFontCreateWithName(long name, double size, CGAffineTransform matrix);
+    static final native int CTFontGetSymbolicTraits(long font);
     static final native boolean CTFontManagerRegisterFontsForURL(long fontURL, int scope, long error);
     static final native long CTLineCreateWithAttributedString(long string);
     static final native long CTLineGetGlyphRuns(long line);

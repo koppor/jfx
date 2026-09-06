@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -26,6 +26,8 @@
 package com.sun.javafx.font.coretext;
 
 import java.lang.ref.Reference;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.sun.javafx.font.Disposer;
 import com.sun.javafx.font.DisposerRecord;
@@ -64,6 +66,13 @@ class CTFontFile extends PrismFontFile {
         }
     }
 
+    /* Style of the face CoreText renders. The super-class reads it from the
+     * OS/2 table, which for a font with variations describes only the
+     * default instance.
+     */
+    private final boolean bold;
+    private final boolean italic;
+
     private long ctFontRef = 0;
     CTFontFile(String name, String filename, int fIndex, long fontRef) throws Exception {
         super(name, filename, fIndex, false, false, false);
@@ -73,6 +82,15 @@ class CTFontFile extends PrismFontFile {
         }
         ctFontRef = fontRef;
         Disposer.addRecord(this, new SelfDisposerRecord(ctFontRef));
+
+        // Name and traits of the face behind the reference, which is the
+        // name CoreText reports for it during layout.
+        if (name != null) {
+            fullName = name;
+        }
+        int traits = OS.CTFontGetSymbolicTraits(fontRef);
+        bold = (traits & OS.kCTFontTraitBold) != 0;
+        italic = (traits & OS.kCTFontTraitItalic) != 0;
     }
 
     CTFontFile(String name, String filename, int fIndex, boolean register,
@@ -92,6 +110,10 @@ class CTFontFile extends PrismFontFile {
                 fullName = name;
             }
         }
+        // "System Font Bold" is what macOS calls the emphasized system font,
+        // which shares its file with the regular one.
+        bold = super.isBold() || fullName.equals("System Font Bold");
+        italic = super.isItalic();
         if (embedded) {
             cgFontRef = createCGFontForEmbeddedFont();
             Disposer.addRecord(this, new SelfDisposerRecord(cgFontRef));
@@ -102,8 +124,12 @@ class CTFontFile extends PrismFontFile {
 
     @Override
     public boolean isBold() {
-        // Need to do this until we add font variation support into the super-class
-        return fullName.equals("System Font Bold") || super.isBold();
+        return bold;
+    }
+
+    @Override
+    public boolean isItalic() {
+        return italic;
     }
 
     public static boolean registerFont(String fontfile) {
@@ -178,14 +204,27 @@ class CTFontFile extends PrismFontFile {
       }
     }
 
+   /* Keyed by size and glyph: the system font's optical size axis makes
+    * advances vary non-linearly with the point size.
+    */
+   private final Map<Long, Float> platformAdvances = new ConcurrentHashMap<>();
+
    @Override protected float getAdvanceFromPlatform(int glyphCode, float ptSize) {
+      long key = ((long)Float.floatToIntBits(ptSize) << 32) | (glyphCode & 0xffffffffL);
+      Float cached = platformAdvances.get(key);
+      if (cached != null) {
+          return cached;
+      }
       CTFontStrike strike =
           (CTFontStrike)getStrike(ptSize, BaseTransform.IDENTITY_TRANSFORM);
       try {
           long fontRef = strike.getFontRef();
+          if (fontRef == 0) return 0;
           int orientation = OS.kCTFontOrientationDefault;
           CGSize size = new CGSize();
-          return (float)OS.CTFontGetAdvancesForGlyphs(fontRef, orientation, (short)glyphCode, size);
+          float advance = (float)OS.CTFontGetAdvancesForGlyphs(fontRef, orientation, (short)glyphCode, size);
+          platformAdvances.put(key, advance);
+          return advance;
       } finally {
           Reference.reachabilityFence(strike);
       }
@@ -214,6 +253,8 @@ class CTFontFile extends PrismFontFile {
              * so use CTFontGetBoundingRectsForGlyphs anyway.
              * In case it fails, or the font doesn't have a glyph table
              * (CFF fonts), then the bounds of the glyph outline is used instead.
+             * The outline is also used for a font with variations: the tables
+             * hold only its default instance, the outline has them applied.
              */
             if (!isCFF()) {
                 if (isColorGlyph(gc)) {
@@ -224,7 +265,7 @@ class CTFontFile extends PrismFontFile {
                     bb[2] = (int)(Math.round((rect.origin.x + rect.size.width) * scale));
                     bb[3] = (int)(Math.round((rect.origin.y + rect.size.height) * scale));
                     return bb;
-                } else {
+                } else if (!hasVariations()) {
                     short format = getIndexToLocFormat();
                     if (OS.CTFontGetBoundingRectForGlyphUsingTables(fontRef, (short)gc, format, bb)) {
                         return bb;
@@ -264,8 +305,7 @@ class CTFontFile extends PrismFontFile {
       } else {
           String psName = getPSName();
           if (psName.startsWith(".")) {
-               boolean bold = getFullName().indexOf("Bold") > 0;
-               retRef = OS.CTFontCreateUIFontForLanguage(size, matrix, bold);
+               retRef = OS.CTFontCreateUIFontForLanguage(size, matrix, isBold(), isItalic());
           } else {
               final long psNameRef = OS.CFStringCreate(psName);
               if (psNameRef != 0) {

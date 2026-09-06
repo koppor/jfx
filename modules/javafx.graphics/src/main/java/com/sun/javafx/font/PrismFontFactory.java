@@ -507,6 +507,16 @@ public abstract class PrismFontFactory implements FontFactory {
         }
 
         getFullNameToFileMap();
+
+        fr = createPlatformFontResource(lcFamilyName, bold, italic);
+        if (fr != null) {
+            storeInMap(lcFamilyName+styleStr, fr);
+            if (wantComp) {  // wrap with fallback support
+                fr = new PrismCompositeFontResource(fr, lcFamilyName+styleStr);
+            }
+            return fr;
+        }
+
         ArrayList<String> family = familyToFontListMap.get(lcFamilyName);
         if (family == null) {
             return null;
@@ -1164,6 +1174,16 @@ public abstract class PrismFontFactory implements FontFactory {
             return path;
         }
         return null; //  shouldn't happen.
+    }
+
+    /*
+     * Resolves a family that the platform provides only through a dedicated
+     * API and not through its enumerable font files, or returns null.
+     */
+    protected PrismFontFile createPlatformFontResource(String lcFamilyName,
+                                                       boolean bold,
+                                                       boolean italic) {
+        return null;
     }
 
     /*
