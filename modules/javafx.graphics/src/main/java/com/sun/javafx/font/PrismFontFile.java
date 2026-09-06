@@ -75,6 +75,7 @@ public abstract class PrismFontFile implements FontResource, FontConstants {
     short indexToLocFormat;
     int fontIndex; // into a TTC.
     boolean isCFF;
+    boolean hasVariations;
     boolean isEmbedded = false;
     boolean isCopy = false;
     boolean isDecoded = false;
@@ -378,6 +379,13 @@ public abstract class PrismFontFile implements FontResource, FontConstants {
         return isCFF;
     }
 
+    /* The static tables of a font with variations describe only its
+     * default instance.
+     */
+    protected boolean hasVariations() {
+        return hasVariations;
+    }
+
     private Object peer;
     @Override
     public Object getPeer() {
@@ -536,6 +544,8 @@ public abstract class PrismFontFile implements FontResource, FontConstants {
                     throw new Exception("bad table, tag="+table.tag);
                 }
             }
+
+            hasVariations = getDirectoryEntry(fvarTag) != null;
 
             DirectoryEntry headDE = getDirectoryEntry(headTag);
             if (headDE == null) {
@@ -1174,11 +1184,13 @@ public abstract class PrismFontFile implements FontResource, FontConstants {
          * The hmtx table in the Apple Color Emoji font can be woefully off
          * compared to the size of emoji glyph CoreText generates and the advance
          * CoreText supports. So for macOS at least, we need to get those advances
-         * another way. Note : I also see "small" discrepancies for ordinary
-         * glyphs in the mac system font between hmtx and CoreText.
-         * Limit use of this because we aren't caching the result.
+         * another way.
+         * The same applies to a font with variations, such as the mac system
+         * font: hmtx describes the default instance, but CoreText renders the
+         * instance it selected, whose weight and optical size differ.
          */
-        if (PrismFontFactory.isMacOSX && isColorGlyph(glyphCode)) {
+        if (PrismFontFactory.isMacOSX &&
+            (hasVariations() || isColorGlyph(glyphCode))) {
             return getAdvanceFromPlatform(glyphCode, ptSize);
         } else {
             return getAdvanceFromHMTX(glyphCode, ptSize);

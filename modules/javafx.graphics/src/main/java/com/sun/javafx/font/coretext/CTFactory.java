@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -28,6 +28,7 @@ package com.sun.javafx.font.coretext;
 import java.util.ArrayList;
 import com.sun.javafx.font.FontFallbackInfo;
 import com.sun.javafx.font.FontResource;
+import com.sun.javafx.font.LogicalFont;
 import com.sun.javafx.font.PrismFontFactory;
 import com.sun.javafx.font.PrismFontFile;
 import com.sun.javafx.text.GlyphLayout;
@@ -87,6 +88,41 @@ public class CTFactory extends PrismFontFactory {
             }
         }
         return result;
+    }
+
+    /*
+     * The system UI font is hidden from font enumeration and only obtainable
+     * via CTFontCreateUIFontForLanguage. Its bold and italic faces are
+     * variations within one file, so matching family and style against the
+     * file contents finds the regular face for all of them. Keep the
+     * CoreText reference of the requested face and render with that.
+     */
+    @Override
+    protected PrismFontFile createPlatformFontResource(String lcFamilyName,
+                                                       boolean bold,
+                                                       boolean italic) {
+        if (!lcFamilyName.equalsIgnoreCase(getSystemFont(LogicalFont.SYSTEM))) {
+            return null;
+        }
+        long fontRef = OS.CTFontCreateUIFontForLanguage(0, null, bold, italic);
+        if (fontRef == 0) {
+            return null;
+        }
+        CTFontFile font = null;
+        String name = OS.CTFontCopyAttributeDisplayName(fontRef);
+        if (name != null) {
+            try {
+                font = createFontFile(name, fontRef);
+            } catch (Exception e) {
+                if (debugFonts) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        if (font == null) {
+            OS.CFRelease(fontRef);
+        }
+        return font;
     }
 
     /*

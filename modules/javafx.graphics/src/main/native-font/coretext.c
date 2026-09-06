@@ -409,11 +409,23 @@ JNIEXPORT jlong JNICALL OS_NATIVE(CTFontCreateWithGraphicsFont)
 }
 
 JNIEXPORT jlong JNICALL OS_NATIVE(CTFontCreateUIFontForLanguage)
-    (JNIEnv *env, jclass that, jdouble size, jobject matrix, jboolean bold) {
+    (JNIEnv *env, jclass that, jdouble size, jobject matrix, jboolean bold, jboolean italic) {
 
     CGAffineTransform _matrix, *lpmatrix=NULL;
     CTFontUIFontType fType = bold ? kCTFontUIFontEmphasizedSystem : kCTFontUIFontSystem;
     CTFontRef font = CTFontCreateUIFontForLanguage(fType, (CGFloat)size, NULL);
+    if (font == NULL) {
+        return 0;
+    }
+    if (italic) {
+        /* There is no UI font type for italic: derive it from the upright face. */
+        CTFontRef italicFont = CTFontCreateCopyWithSymbolicTraits(font, 0.0, NULL,
+                                   kCTFontTraitItalic, kCTFontTraitItalic);
+        if (italicFont != NULL) {
+            CFRelease(font);
+            font = italicFont;
+        }
+    }
     if (matrix == NULL) {
         return (jlong)font;
     }
@@ -423,6 +435,12 @@ JNIEXPORT jlong JNICALL OS_NATIVE(CTFontCreateUIFontForLanguage)
     jlong txfont = (jlong)CTFontCreateCopyWithAttributes(font, (CGFloat)size, (CGAffineTransform*)lpmatrix, NULL);
     CFRelease(font);
     return txfont;
+}
+
+JNIEXPORT jint JNICALL OS_NATIVE(CTFontGetSymbolicTraits)
+    (JNIEnv *env, jclass that, jlong font)
+{
+    return (jint)CTFontGetSymbolicTraits((CTFontRef)font);
 }
 
 JNIEXPORT jlong JNICALL OS_NATIVE(CTFontCreateWithName)

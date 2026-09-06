@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -42,6 +42,7 @@ public interface FontConstants {
     public static final int postTag = 0x706F7374; // 'post'
     public static final int colrTag = 0x434F4C52; // 'COLR'
     public static final int sbixTag = 0x73626978; // 'sbix'
+    public static final int fvarTag = 0x66766172; // 'fvar' - font variations
 
     /* sizes, in bytes, of TT/TTC header records */
     public static final int TTCHEADERSIZE = 12;
