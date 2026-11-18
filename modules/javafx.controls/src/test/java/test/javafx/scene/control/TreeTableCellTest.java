@@ -41,6 +41,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
+import javafx.geometry.Bounds;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.control.CellShim;
 import javafx.scene.control.IndexedCell;
 import javafx.scene.control.TreeItem;
@@ -707,6 +710,25 @@ public class TreeTableCellTest {
         tree.getColumns().add(treeTableColumn);
 
         stageLoader = new StageLoader(tree);
+    }
+
+    /**
+     * Centered content has the same space above and below it if the padding is symmetric.
+     */
+    @Test
+    public void centeredContentShouldHonorBottomPadding() {
+        editingColumn.setCellValueFactory(cc -> new SimpleStringProperty(cc.getValue().getValue()));
+        tree.getColumns().add(editingColumn);
+        tree.setFixedCellSize(50);
+        stageLoader = new StageLoader(tree);
+
+        IndexedCell<?> tableCell = VirtualFlowTestUtils.getCell(tree, 0, 0);
+        tableCell.setPadding(new Insets(10, 5, 10, 5));
+        tableCell.setAlignment(Pos.CENTER_LEFT);
+        Toolkit.getToolkit().firePulse();
+
+        Bounds text = tableCell.lookup(".text").getBoundsInParent();
+        assertEquals(text.getMinY(), tableCell.getHeight() - text.getMaxY(), 1);
     }
 
     /**
