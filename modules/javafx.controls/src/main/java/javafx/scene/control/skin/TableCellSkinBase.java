@@ -140,15 +140,6 @@ public abstract class TableCellSkinBase<S, T, C extends IndexedCell<T>> extends 
     }
 
     /** {@inheritDoc} */
-    @Override protected void layoutChildren(final double x, final double y,
-            final double w, final double h) {
-        // fit the cell within this space
-        // FIXME the subtraction of bottom padding isn't right here - but it
-        // results in better visuals, so I'm leaving it in place for now.
-        layoutLabelInArea(x, y, w, h - getSkinnable().getPadding().getBottom());
-    }
-
-    /** {@inheritDoc} */
     @Override protected double computePrefWidth(double height, double topInset, double rightInset, double bottomInset, double leftInset) {
         if (isDeferToParentForPrefWidth) {
             return super.computePrefWidth(height, topInset, rightInset, bottomInset, leftInset);

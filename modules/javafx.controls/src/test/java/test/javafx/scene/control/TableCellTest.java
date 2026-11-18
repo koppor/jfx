@@ -42,6 +42,9 @@ import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.geometry.Bounds;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.control.CellShim;
 import javafx.scene.control.IndexedCell;
 import javafx.scene.control.MenuItem;
@@ -976,6 +979,25 @@ public class TableCellTest {
         cell.updateIndex(0);
 
         assertTrue(isItemChangedCalled.get());
+    }
+
+    /**
+     * Centered content has the same space above and below it if the padding is symmetric.
+     */
+    @Test
+    public void centeredContentShouldHonorBottomPadding() {
+        editingColumn.setCellValueFactory(cc -> new SimpleStringProperty(cc.getValue()));
+        table.getColumns().add(editingColumn);
+        table.setFixedCellSize(50);
+        stageLoader = new StageLoader(table);
+
+        IndexedCell<?> tableCell = VirtualFlowTestUtils.getCell(table, 0, 0);
+        tableCell.setPadding(new Insets(10, 5, 10, 5));
+        tableCell.setAlignment(Pos.CENTER_LEFT);
+        Toolkit.getToolkit().firePulse();
+
+        Bounds text = tableCell.lookup(".text").getBoundsInParent();
+        assertEquals(text.getMinY(), tableCell.getHeight() - text.getMaxY(), 1);
     }
 
     public static class MisbehavingOnCancelTableCell<S, T> extends TableCell<S, T> {
