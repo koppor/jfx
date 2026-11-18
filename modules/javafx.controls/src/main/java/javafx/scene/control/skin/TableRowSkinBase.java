@@ -333,10 +333,12 @@ public abstract class TableRowSkinBase<T,
                 // We change the alignment from CENTER_LEFT to TOP_LEFT if the
                 // height of the row is greater than the default size, and if
                 // the alignment is the default alignment.
+                // Rows of a fixed size do not grow with multi-line content, so
+                // their cells keep the default alignment.
                 // What I would rather do is only change the alignment if the
                 // alignment has not been manually changed, but for now this will
                 // do.
-                final boolean centreContent = height <= 24.0;
+                final boolean centreContent = fixedCellSize > 0 || height <= 24.0;
 
                 // if the style origin is null then the property has not been
                 // set (or it has been reset to its default), which means that

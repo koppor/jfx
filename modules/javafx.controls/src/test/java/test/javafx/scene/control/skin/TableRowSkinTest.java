@@ -29,10 +29,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import java.util.List;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.IndexedCell;
 import javafx.scene.control.Skin;
@@ -336,6 +338,44 @@ public class TableRowSkinTest {
         Toolkit.getToolkit().firePulse();
         IndexedCell<?> row = VirtualFlowTestUtils.getCell(tableView, 1);
         assertEquals(5, row.getChildrenUnmodifiable().stream().filter(TableCell.class::isInstance).count());
+    }
+
+    /**
+     * Rows of a fixed size do not grow with multi-line content, so their cells keep the default alignment,
+     * even if the rows are taller than 24px.
+     */
+    @Test
+    public void cellsInRowsWithFixedCellSizeKeepDefaultAlignment() {
+        tableView.setFixedCellSize(40);
+        Toolkit.getToolkit().firePulse();
+
+        assertEquals(List.of(Pos.CENTER_LEFT), cellAlignments(0));
+    }
+
+    /**
+     * Cells in rows that grow taller than 24px are top-aligned (JDK-8115536).
+     */
+    @Test
+    public void cellsInTallRowsAreTopAligned() {
+        tableView.setRowFactory(tableView -> {
+            TableRow<Person> row = new TableRow<>();
+            row.setPrefHeight(40);
+            return row;
+        });
+        Toolkit.getToolkit().firePulse();
+
+        assertEquals(List.of(Pos.TOP_LEFT), cellAlignments(0));
+    }
+
+    /**
+     * @return the distinct alignments of the cells in the given row
+     */
+    private List<Pos> cellAlignments(int rowIndex) {
+        return VirtualFlowTestUtils.getCell(tableView, rowIndex).getChildrenUnmodifiable().stream()
+                .filter(TableCell.class::isInstance)
+                .map(cell -> ((TableCell<?, ?>) cell).getAlignment())
+                .distinct()
+                .toList();
     }
 
     @AfterEach
