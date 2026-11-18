@@ -31,11 +31,13 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.lang.ref.WeakReference;
+import java.util.List;
 
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.IndexedCell;
 import javafx.scene.control.Skin;
@@ -455,6 +457,23 @@ public class TreeTableRowSkinTest {
 
         assertEquals(1.0, disclosure.getOpacity(), 0.0);
         assertEquals(1.0, parentGraphic.getOpacity(), 0.0);
+    }
+
+    /**
+     * Rows of a fixed size do not grow with multi-line content, so their cells keep the default alignment,
+     * even if the rows are taller than 24px.
+     */
+    @Test
+    public void cellsInRowsWithFixedCellSizeKeepDefaultAlignment() {
+        treeTableView.setFixedCellSize(40);
+        Toolkit.getToolkit().firePulse();
+
+        assertEquals(List.of(Pos.CENTER_LEFT),
+                VirtualFlowTestUtils.getCell(treeTableView, 0).getChildrenUnmodifiable().stream()
+                        .filter(TreeTableCell.class::isInstance)
+                        .map(cell -> ((TreeTableCell<?, ?>) cell).getAlignment())
+                        .distinct()
+                        .toList());
     }
 
     @AfterEach
